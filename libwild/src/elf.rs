@@ -190,6 +190,15 @@ pub(crate) enum RelocationList<'data> {
     Crel(CrelIterator<'data>),
 }
 
+impl RelocationList<'_> {
+    pub(crate) fn num_relocations(self) -> usize {
+        match self {
+            RelocationList::Rela(rela) => rela.len(),
+            RelocationList::Crel(crel) => crel.count(),
+        }
+    }
+}
+
 impl<'data> RelocationSequence<'data> for &'data [Rela] {
     type Rel = Rela;
 
@@ -468,6 +477,10 @@ impl<'data> platform::ObjectFile<'data> for File<'data> {
 
     fn dynamic_tags(&self) -> Result<&'data [Self::DynamicEntry]> {
         dynamic_tags(&self.sections, self.data)
+    }
+
+    fn num_relocations(list: RelocationList<'data>) -> usize {
+        list.num_relocations()
     }
 
     fn parse_relocations(&self) -> Result<Self::RelocationSections> {
@@ -1213,6 +1226,10 @@ impl<'data> platform::ObjectFile<'data> for File<'data> {
         section: layout::Section,
         scope: &Scope<'scope>,
     ) -> Result {
+        if resources.symbol_db.output_kind.is_partial_object() {
+            return Ok(());
+        }
+
         match state.relocations(section.index)? {
             RelocationList::Rela(relocations) => {
                 state.load_section_relocations::<P, Rela>(

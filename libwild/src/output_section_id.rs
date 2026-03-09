@@ -30,6 +30,7 @@ use crate::output_section_part_map::OutputSectionPartMap;
 use crate::part_id;
 use crate::part_id::NUM_SINGLE_PART_SECTIONS;
 use crate::part_id::PartId;
+use crate::platform::SectionType as _;
 use crate::program_segments::PROGRAM_SEGMENT_DEFS;
 use crate::program_segments::ProgramSegmentDef;
 use crate::program_segments::ProgramSegmentId;
@@ -1040,6 +1041,20 @@ impl<'data> OutputSections<'data> {
         }
     }
 
+    pub(crate) fn add_rela_section(&mut self, name: SectionName<'data>) -> OutputSectionId {
+        *self.custom_by_name.entry(name).or_insert_with(|| {
+            self.section_infos.add_new(SectionOutputInfo {
+                kind: SectionKind::Primary(name),
+                section_flags: linker_utils::elf::shf::INFO_LINK,
+                ty: sht::RELA,
+                min_alignment: crate::alignment::RELA_ENTRY,
+                entsize: elf::RELA_ENTRY_SIZE,
+                location: None,
+                secondary_order: None,
+            })
+        })
+    }
+
     pub(crate) fn add_named_section(
         &mut self,
         name: SectionName<'data>,
@@ -1240,8 +1255,30 @@ impl<'data> OutputSections<'data> {
         format!("{section_id}{merge} ({})", self.display_name(merge_target))
     }
 
-    pub(crate) fn custom_name_to_id(&self, name: SectionName) -> Option<OutputSectionId> {
+    pub(crate) fn custom_name_to_id<'a>(&self, name: SectionName<'a>) -> Option<OutputSectionId> {
         self.custom_by_name.get(&name).copied()
+    }
+
+    pub(crate) fn will_emit_section_symbol(&self, section_id: OutputSectionId) -> bool {
+        if !self.will_emit_section(section_id) {
+            return false;
+        }
+
+        if matches!(section_id, FILE_HEADER | PROGRAM_HEADERS | SECTION_HEADERS) {
+            return false;
+        }
+
+        let ty = self.output_info(section_id).ty;
+        let segment_type = section_id
+            .opt_built_in_details()
+            .and_then(|d| d.target_segment_type)
+            .unwrap_or(linker_utils::elf::pt::LOAD);
+        !ty.is_null()
+            && ty != linker_utils::elf::sht::RELA
+            && ty != linker_utils::elf::sht::REL
+            && ty != linker_utils::elf::sht::SYMTAB
+            && ty != linker_utils::elf::sht::STRTAB
+            && segment_type == linker_utils::elf::pt::LOAD
     }
 
     #[cfg(test)]

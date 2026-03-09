@@ -153,6 +153,7 @@ pub struct Args {
 
     pub(crate) relocation_model: RelocationModel,
     pub(crate) should_output_executable: bool,
+    pub(crate) should_output_reloc: bool,
 
     /// The number of actually available threads (considering jobserver)
     pub(crate) available_threads: NonZeroUsize,
@@ -420,6 +421,7 @@ impl Default for Args {
             inputs: Vec::new(),
             output: Arc::from(Path::new("a.out")),
             should_output_executable: true,
+            should_output_reloc: false,
             dynamic_linker: None,
             time_phase_options: None,
             num_threads: None,
@@ -548,7 +550,7 @@ pub(crate) fn parse<F: Fn() -> I, S: AsRef<str>, I: Iterator<Item = S>>(input: F
     }
 
     // Copy relocations are only permitted when building executables.
-    if !args.should_output_executable {
+    if !args.should_output_executable && !args.should_output_reloc {
         args.copy_relocations =
             CopyRelocations::Disallowed(CopyRelocationsDisabledReason::SharedObject);
     }
@@ -2578,6 +2580,21 @@ fn setup_argument_parser() -> ArgumentParser {
         .help("Treat unresolved symbols as warnings")
         .execute(|args, _modifier_stack| {
             args.error_unresolved_symbols = false;
+            Ok(())
+        });
+
+    parser
+        .declare()
+        .short("r")
+        .long("relocatable")
+        .help("Create a relocatable object file")
+        .execute(|args, _modifier_stack| {
+            args.should_output_executable = false;
+            args.should_output_reloc = true;
+            args.gc_sections = false;
+            args.relro = false;
+            args.should_write_linker_identity = false;
+            args.merge_sections = false;
             Ok(())
         });
 

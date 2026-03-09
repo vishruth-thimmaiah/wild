@@ -98,7 +98,12 @@ impl<'data, O: ObjectFile<'data>> Resolver<'data, O> {
 
         let mut syn = symbol_db.new_synthetic_symbols_group();
 
-        assign_section_ids(&mut self.resolved_groups, output_sections, symbol_db.args);
+        assign_section_ids(
+            &mut self.resolved_groups,
+            output_sections,
+            symbol_db.args,
+            &symbol_db.herd.get(),
+        )?;
 
         canonicalise_undefined_symbols(
             self.undefined_symbols,
@@ -689,7 +694,8 @@ fn assign_section_ids<'data, O: ObjectFile<'data>>(
     resolved: &mut [ResolvedGroup<'data, O>],
     output_sections: &mut OutputSections<'data>,
     args: &Args,
-) {
+    allocator: &bumpalo_herd::Member<'data>,
+) -> Result {
     timing_phase!("Assign section IDs");
 
     for group in resolved {
@@ -701,9 +707,34 @@ fn assign_section_ids<'data, O: ObjectFile<'data>>(
                     s.sections.as_mut_slice(),
                     output_sections,
                 );
+
+                if args.should_output_reloc {
+                    for i in 0..s.sections.len() {
+                        let section_index = SectionIndex(i);
+                        let relocations =
+                            s.common.object.relocations(section_index, &s.relocations)?;
+                        if O::num_relocations(relocations) == 0 {
+                            continue;
+                        }
+
+                        let section_name = s
+                            .common
+                            .object
+                            .section_name(s.common.object.section(section_index)?)
+                            .unwrap_or_default();
+
+                        let mut rela_name = Vec::with_capacity(section_name.len() + 5);
+                        rela_name.extend_from_slice(b".rela");
+                        rela_name.extend_from_slice(section_name);
+                        let rela_name = allocator.alloc_slice_copy(&rela_name);
+
+                        output_sections.add_rela_section(SectionName(rela_name));
+                    }
+                }
             }
         }
     }
+    Ok(())
 }
 
 fn parse_priority_suffix(suffix: &[u8]) -> Option<u16> {
@@ -1192,7 +1223,12 @@ fn resolve_section<'data, O: ObjectFile<'data>>(
             .map(|n| n.as_encoded_bytes())
     };
 
-    match rules.lookup(section_name, file_name, section_flags, section_type) {
+    let rule_outcome = if args.should_output_reloc {
+        rules.lookup_for_partial_link(section_name, section_flags, section_type)
+    } else {
+        rules.lookup(section_name, file_name, section_flags, section_type)
+    };
+    match rule_outcome {
         SectionRuleOutcome::Section(output_info) => {
             let part_id = if output_info.section_id.is_regular() {
                 output_info.section_id.part_id_with_alignment(alignment)

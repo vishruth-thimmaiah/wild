@@ -486,6 +486,58 @@ impl<'data> SectionRules<'data> {
 
         SectionRuleOutcome::Custom
     }
+
+    #[inline(always)]
+    pub(crate) fn lookup_for_partial_link(
+        &self,
+        section_name: &[u8],
+        section_flags: impl SectionFlags,
+        sh_type: impl SectionType,
+    ) -> SectionRuleOutcome {
+        if section_flags.should_exclude() {
+            return SectionRuleOutcome::Discard;
+        }
+
+        if section_name.is_empty() {
+            return unnamed_section_output(section_flags, sh_type);
+        }
+
+        match section_name {
+            secnames::STRTAB_SECTION_NAME
+            | secnames::SYMTAB_SECTION_NAME
+            | secnames::SHSTRTAB_SECTION_NAME
+            | secnames::GROUP_SECTION_NAME => {
+                return SectionRuleOutcome::Discard;
+            }
+            secnames::NOTE_GNU_PROPERTY_SECTION_NAME => return SectionRuleOutcome::NoteGnuProperty,
+            secnames::RISCV_ATTRIBUTES_SECTION_NAME => return SectionRuleOutcome::RiscVAttribute,
+            secnames::NOTE_ABI_TAG_SECTION_NAME => {
+                return SectionRuleOutcome::Section(SectionOutputInfo::keep(
+                    output_section_id::NOTE_ABI_TAG,
+                ));
+            }
+            secnames::SFRAME_SECTION_NAME => {
+                return SectionRuleOutcome::Section(SectionOutputInfo::keep(
+                    output_section_id::SFRAME,
+                ));
+            }
+            _ => {}
+        }
+
+        if section_name.starts_with(b".rela") || section_name.starts_with(b".crel") {
+            return SectionRuleOutcome::Discard;
+        }
+
+        if section_name == b".note.GNU-stack" {
+            return SectionRuleOutcome::Discard;
+        }
+
+        if section_name.starts_with(b".debug_") {
+            return SectionRuleOutcome::Debug;
+        }
+
+        SectionRuleOutcome::Custom
+    }
 }
 
 /// Returns a hash of the first four bytes of the supplied name or `None` if the name is shorter

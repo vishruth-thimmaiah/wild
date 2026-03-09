@@ -344,6 +344,8 @@ pub(crate) trait ObjectFile<'data>: Send + Sync + Sized + std::fmt::Debug + 'dat
         relocations: &Self::RelocationSections,
     ) -> Result<Self::RelocationList>;
 
+    fn num_relocations(list: Self::RelocationList) -> usize;
+
     fn parse_relocations(&self) -> Result<Self::RelocationSections>;
 
     /// Get the version of a symbol. Only intended for diagnostic purposes since it's potentially
