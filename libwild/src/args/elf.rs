@@ -117,6 +117,7 @@ pub struct ElfArgs {
 
     pub(crate) relocation_model: RelocationModel,
     pub(crate) should_output_executable: bool,
+    pub(crate) should_output_reloc: bool,
 
     rpath_set: IndexSet<String>,
 }
@@ -237,6 +238,7 @@ impl Default for ElfArgs {
             lib_search_path: Vec::new(),
             output: Arc::from(Path::new("a.out")),
             should_output_executable: true,
+            should_output_reloc: false,
             dynamic_linker: None,
             strip: Strip::Nothing,
             // For now, we default to --gc-sections. This is different to other linkers, but other
@@ -783,6 +785,21 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
         .execute(|args, _modifier_stack| {
             args.relocation_model = RelocationModel::NonRelocatable;
             args.should_output_executable = true;
+            Ok(())
+        });
+
+    parser
+        .declare()
+        .short("r")
+        .long("relocatable")
+        .help("Create a relocatable object file")
+        .execute(|args, _modifier_stack| {
+            args.should_output_executable = false;
+            args.should_output_reloc = true;
+            args.gc_sections = false;
+            args.relro = false;
+            args.should_write_linker_identity = false;
+            args.merge_sections = false;
             Ok(())
         });
 
@@ -1890,6 +1907,10 @@ impl platform::Args for ElfArgs {
 
     fn should_output_executable(&self) -> bool {
         self.should_output_executable
+    }
+
+    fn should_output_partial_object(&self) -> bool {
+        self.should_output_reloc
     }
 }
 

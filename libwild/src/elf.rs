@@ -236,6 +236,15 @@ pub(crate) enum RelocationList<'data> {
     Crel(CrelIterator<'data>),
 }
 
+impl<'data> platform::RelocationList<'data> for RelocationList<'data> {
+    fn num_relocations(&self) -> usize {
+        match self {
+            RelocationList::Rela(rela) => rela.len(),
+            RelocationList::Crel(crel) => crel.clone().count(),
+        }
+    }
+}
+
 impl<'data> RelocationSequence<'data> for &'data [Rela] {
     type Rel = Rela;
 
@@ -528,6 +537,10 @@ impl platform::Platform for Elf {
         section: layout::Section,
         scope: &Scope<'scope>,
     ) -> Result {
+        if resources.symbol_db.output_kind.is_partial_object() {
+            return Ok(());
+        }
+
         match state.relocations(section.index)? {
             RelocationList::Rela(relocations) => {
                 load_section_relocations::<A, Rela>(
@@ -1352,6 +1365,15 @@ impl platform::Platform for Elf {
                     num_globals += 1;
                 }
                 let name = RawSymbolName::parse(info.name).name();
+                strings_size += name.len() + 1;
+            } else if symbol_db.args.should_output_reloc
+                && sym.is_undefined()
+                && symbol_db.is_canonical(symbol_id)
+                && let Ok(name) = state.object.symbol_name(sym)
+                && !name.is_empty()
+            {
+                let name = RawSymbolName::parse(name).name();
+                num_globals += 1;
                 strings_size += name.len() + 1;
             }
         }
@@ -2346,7 +2368,23 @@ impl platform::SectionHeader for SectionHeader {
     }
 }
 
-impl platform::SectionType for SectionType {}
+impl platform::SectionType for SectionType {
+    fn is_rela(&self) -> bool {
+        *self == sht::RELA
+    }
+
+    fn is_rel(&self) -> bool {
+        *self == sht::REL
+    }
+
+    fn is_symtab(&self) -> bool {
+        *self == sht::SYMTAB
+    }
+
+    fn is_strtab(&self) -> bool {
+        *self == sht::STRTAB
+    }
+}
 
 impl platform::SectionFlags for SectionFlags {
     fn is_alloc(self) -> bool {
@@ -3278,6 +3316,18 @@ impl platform::SectionAttributes for SectionAttributes {
 
     fn is_no_bits(&self) -> bool {
         self.ty == sht::NOBITS
+    }
+
+    fn ty(&self) -> <Self::Platform as Platform>::SectionType {
+        todo!()
+    }
+
+    fn new_relocatable_section() -> Self {
+        return Self {
+            flags: linker_utils::elf::shf::INFO_LINK,
+            ty: sht::RELA,
+            entsize: elf::RELA_ENTRY_SIZE,
+        };
     }
 }
 

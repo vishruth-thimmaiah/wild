@@ -196,7 +196,7 @@ pub(crate) trait Platform: Copy + Send + Sync + Sized + std::fmt::Debug + 'stati
 
     type SectionIterator<'data>: Iterator<Item = &'data Self::SectionHeader>;
     type DynamicTagValues<'data>: DynamicTagValues<'data>;
-    type RelocationList<'data>: Send + Sync + 'data;
+    type RelocationList<'data>: RelocationList<'data> + Send + Sync + 'data;
     type VerneedTable<'data>: VerneedTable<'data>;
     type DynamicLayoutStateExt<'data>: Default + Send + Sync + 'data;
     type DynamicLayoutExt<'data>: std::fmt::Debug + Send + Sync + 'data;
@@ -747,6 +747,13 @@ pub(crate) trait SectionHeader: std::fmt::Debug + Send + Sync + 'static {
 pub(crate) trait SectionType:
     Default + Copy + Send + Sync + std::fmt::Debug + 'static
 {
+    fn is_rela(&self) -> bool;
+
+    fn is_rel(&self) -> bool;
+
+    fn is_symtab(&self) -> bool;
+
+    fn is_strtab(&self) -> bool;
 }
 
 pub(crate) trait SegmentType:
@@ -831,6 +838,10 @@ pub(crate) trait RelocationSequence<'data> {
     fn num_relocations(&self) -> usize;
 }
 
+pub(crate) trait RelocationList<'data> {
+    fn num_relocations(&self) -> usize;
+}
+
 pub(crate) trait RawSymbolName<'data>: Send + Sync + std::fmt::Display + 'data {
     fn parse(bytes: &'data [u8]) -> Self;
 
@@ -880,8 +891,12 @@ pub(crate) trait SectionAttributes:
 
     fn flags(&self) -> <Self::Platform as Platform>::SectionFlags;
 
+    fn ty(&self) -> <Self::Platform as Platform>::SectionType;
+
     /// Called for custom sections that return true to `is_null`.
     fn set_to_default_type(&mut self);
+
+    fn new_relocatable_section() -> Self;
 }
 
 pub(crate) struct SourceInfo(pub(crate) Option<SourceInfoDetails>);
@@ -1079,4 +1094,6 @@ pub(crate) trait Args: std::fmt::Debug + Send + Sync + 'static {
     fn relocation_model(&self) -> crate::args::RelocationModel;
 
     fn should_output_executable(&self) -> bool;
+
+    fn should_output_partial_object(&self) -> bool;
 }
