@@ -8,11 +8,15 @@ pub(crate) enum OutputKind {
     StaticExecutable(RelocationModel),
     DynamicExecutable(RelocationModel),
     SharedObject,
+    Relocatable,
 }
 
 impl OutputKind {
     pub(crate) fn new(args: &Args<ElfArgs>, input_data: &FileLoader<'_>) -> OutputKind {
         if !args.should_output_executable {
+            if args.should_output_partial_reloc {
+                return OutputKind::Relocatable;
+            }
             OutputKind::SharedObject
         } else if args.dynamic_linker.is_some()
             && args.relocation_model == RelocationModel::Relocatable
@@ -33,11 +37,15 @@ impl OutputKind {
     }
 
     pub(crate) fn is_executable(self) -> bool {
-        !matches!(self, OutputKind::SharedObject)
+        !matches!(self, OutputKind::SharedObject | OutputKind::Relocatable)
     }
 
     pub(crate) fn is_shared_object(self) -> bool {
         matches!(self, OutputKind::SharedObject)
+    }
+
+    pub(crate) fn is_partial_object(self) -> bool {
+        matches!(self, OutputKind::Relocatable)
     }
 
     pub(crate) fn is_dynamic_executable(self) -> bool {
@@ -54,6 +62,7 @@ impl OutputKind {
             OutputKind::StaticExecutable(RelocationModel::Relocatable)
                 | OutputKind::DynamicExecutable(RelocationModel::Relocatable)
                 | OutputKind::SharedObject
+                | OutputKind::Relocatable
         )
     }
 
@@ -69,7 +78,10 @@ impl OutputKind {
     }
 
     pub(crate) fn needs_dynamic(self) -> bool {
-        self != OutputKind::StaticExecutable(RelocationModel::NonRelocatable)
+        !matches!(
+            self,
+            OutputKind::StaticExecutable(RelocationModel::NonRelocatable) | OutputKind::Relocatable
+        )
     }
 
     pub(crate) fn base_address(self) -> u64 {

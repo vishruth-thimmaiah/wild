@@ -133,6 +133,7 @@ pub struct ElfArgs {
 
     pub(crate) relocation_model: RelocationModel,
     pub(crate) should_output_executable: bool,
+    pub(crate) should_output_partial_reloc: bool,
 
     rpath_set: IndexSet<String>,
 }
@@ -270,6 +271,7 @@ impl Default for ElfArgs {
             lib_search_path: Vec::new(),
             output: Arc::from(Path::new("a.out")),
             should_output_executable: true,
+            should_output_partial_reloc: false,
             dynamic_linker: None,
             time_phase_options: None,
             strip: Strip::Nothing,
@@ -447,7 +449,7 @@ pub(crate) fn parse<F: Fn() -> I, S: AsRef<str>, I: Iterator<Item = S>>(
     }
 
     // Copy relocations are only permitted when building executables.
-    if !args.should_output_executable {
+    if !args.should_output_executable && !args.should_output_partial_reloc {
         args.copy_relocations =
             CopyRelocations::Disallowed(CopyRelocationsDisabledReason::SharedObject);
     }
@@ -837,6 +839,21 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
         .execute(|args, _modifier_stack| {
             args.relocation_model = RelocationModel::NonRelocatable;
             args.should_output_executable = true;
+            Ok(())
+        });
+
+    parser
+        .declare()
+        .short("r")
+        .long("relocatable")
+        .help("Create a relocatable object file")
+        .execute(|args, _modifier_stack| {
+            args.should_output_executable = false;
+            args.should_output_partial_reloc = true;
+            args.gc_sections = false;
+            args.relro = false;
+            args.should_write_linker_identity = false;
+            args.merge_sections = false;
             Ok(())
         });
 

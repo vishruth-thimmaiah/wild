@@ -213,6 +213,15 @@ pub(crate) enum RelocationList<'data> {
     Crel(CrelIterator<'data>),
 }
 
+impl<'data> platform::RelocationList<'data> for RelocationList<'data> {
+    fn num_relocations(&self) -> usize {
+        match self {
+            RelocationList::Rela(rela) => rela.num_relocations(),
+            RelocationList::Crel(crel) => crel.len(),
+        }
+    }
+}
+
 impl<'data> RelocationSequence<'data> for &'data [Rela] {
     type Rel = Rela;
 
@@ -454,6 +463,9 @@ impl platform::Platform for Elf {
         section: layout::Section,
         scope: &Scope<'scope>,
     ) -> Result {
+        if resources.symbol_db.args.should_output_partial_reloc {
+            return Ok(());
+        }
         match state.relocations(section.index)? {
             RelocationList::Rela(relocations) => {
                 state.load_debug_relocations::<A, Rela>(
@@ -1884,7 +1896,23 @@ impl platform::SectionHeader for SectionHeader {
     }
 }
 
-impl platform::SectionType for SectionType {}
+impl platform::SectionType for SectionType {
+    fn is_rela(&self) -> bool {
+        *self == sht::RELA
+    }
+
+    fn is_rel(&self) -> bool {
+        *self == sht::REL
+    }
+
+    fn is_symtab(&self) -> bool {
+        *self == sht::SYMTAB
+    }
+
+    fn is_strtab(&self) -> bool {
+        *self == sht::STRTAB
+    }
+}
 
 impl platform::SectionFlags for SectionFlags {
     fn is_alloc(self) -> bool {
@@ -2796,6 +2824,10 @@ impl platform::SectionAttributes for SectionAttributes {
 
     fn flags(&self) -> <Self::Platform as Platform>::SectionFlags {
         self.flags
+    }
+
+    fn ty(&self) -> <Self::Platform as Platform>::SectionType {
+        self.ty
     }
 
     fn set_to_default_type(&mut self) {
