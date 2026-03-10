@@ -128,6 +128,9 @@
 //! Object:{source-filename}[:extra-compilation-args] Builds the specified filename as a regular
 //! object and adds it to the link.
 //!
+//! Relocatable:{source-filename}[:extra-compilation-args] Builds the specified filename as a
+//! relocatable object and adds it to the link.
+//!
 //! Archive:{source-filename}[:extra-compilation-args] Builds the specified filename as an archive
 //! and adds it to the link.
 //!
@@ -294,6 +297,42 @@ impl Linker {
             config.expect_errors = Vec::new();
 
             command.run(&config)?;
+            command.write_input_hashes()?;
+        }
+
+        Ok(LinkerInput::with_command(so_path.to_owned(), command))
+    }
+
+    fn link_partial(
+        &self,
+        objects: &[BuiltObject],
+        so_path: &Path,
+        config: &Config,
+        cross_arch: Option<Architecture>,
+    ) -> Result<LinkerInput> {
+        let linker_args = ArgumentSet {
+            args: vec!["-r".to_owned()],
+        };
+
+        let mut partial_config = config.clone();
+        partial_config.linker_driver = LinkerDriver::Direct(DirectConfig {
+            mode: Mode::Unspecified,
+        });
+
+        let mut command = LinkCommand::new(
+            self,
+            &objects.iter().flat_map(|o| o.inputs()).collect_vec(),
+            so_path,
+            &linker_args,
+            &partial_config,
+            cross_arch,
+        )?;
+
+        if !command.can_skip() {
+            let mut run_config = partial_config.clone();
+            run_config.expect_errors = Vec::new();
+
+            command.run(&run_config)?;
             command.write_input_hashes()?;
         }
 
@@ -916,6 +955,7 @@ impl ExpectedSymtabEntry {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, EnumString)]
 enum InputType {
     Object,
+    Relocatable,
     Archive,
     ThinArchive,
     BsdArchive,
@@ -1174,8 +1214,8 @@ fn parse_configs(src_filename: &Path, default_config: &Config) -> Result<Vec<Con
                         .map(|(a, b)| (a.to_owned(), b.to_owned()))?,
                 ),
                 "AutoAddObjects" => config.auto_add_objects = parse_bool(arg, "AutoAddObjects")?,
-                input_type @ ("Object" | "Archive" | "ThinArchive" | "BsdArchive" | "Shared"
-                | "LinkerScript") => {
+                input_type @ ("Object" | "Relocatable" | "Archive" | "ThinArchive"
+                | "BsdArchive" | "Shared" | "LinkerScript") => {
                     let input_type = InputType::from_str(input_type)?;
 
                     let mut arg = arg;
@@ -1777,6 +1817,10 @@ fn build_linker_input(
                 .check_path(&out.path, linker)
                 .with_context(|| format!("Assertions failed for `{}`", out.path.display()))?;
             out
+        }
+        InputType::Relocatable => {
+            let so_path = first_obj_path.with_extension(format!("{linker}.o"));
+            linker.link_partial(&objects, &so_path, &config, cross_arch)?
         }
         InputType::LinkerScript => LinkerInput::new_prefixed(first_obj_path.to_owned(), "-T"),
     };
@@ -2422,7 +2466,10 @@ impl LinkCommand {
                         Mode::Unspecified => {}
                     }
 
-                    command.arg("--gc-sections").args(&linker_args.args);
+                    if !linker_args.args.iter().any(|a| a == "-r") {
+                        command.arg("--gc-sections");
+                    }
+                    command.args(&linker_args.args);
                 }
             }
 
@@ -3126,6 +3173,7 @@ impl Display for InputType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InputType::Object => write!(f, "object"),
+            InputType::Relocatable => write!(f, "relocatable"),
             InputType::Archive => write!(f, "archive"),
             InputType::ThinArchive => write!(f, "thin archive"),
             InputType::BsdArchive => write!(f, "bsd archive"),
@@ -3582,7 +3630,8 @@ fn integration_test(
         "riscv-cross-object-call-relaxation.s",
         "riscv-hi20-relaxation.s",
         "segment-end-syms.c",
-        "linker-script-filename-match.c"
+        "linker-script-filename-match.c",
+        "relocatable.c"
     )]
     program_name: &'static str,
     #[allow(unused_variables)] setup_symlink: (),
