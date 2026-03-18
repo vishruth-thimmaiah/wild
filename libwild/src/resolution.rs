@@ -34,7 +34,7 @@ use crate::platform::FrameIndex;
 use crate::platform::ObjectFile;
 use crate::platform::Platform;
 use crate::platform::RawSymbolName as _;
-use crate::platform::RelocationList;
+use crate::platform::RelocationList as _;
 use crate::platform::SectionHeader as _;
 use crate::platform::Symbol as _;
 use crate::platform::VerneedTable as _;

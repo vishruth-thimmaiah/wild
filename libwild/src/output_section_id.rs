@@ -29,8 +29,6 @@ use crate::part_id::PartId;
 use crate::platform::Platform;
 use crate::platform::ProgramSegmentDef;
 use crate::platform::SectionAttributes;
-use crate::platform::SectionAttributes as _;
-use crate::platform::SectionHeader;
 use crate::platform::SectionType as _;
 use crate::program_segments::ProgramSegmentId;
 use crate::program_segments::ProgramSegments;
@@ -646,11 +644,11 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         *self.custom_by_name.entry(name).or_insert_with(|| {
             self.section_infos.add_new(SectionOutputInfo {
                 kind: SectionKind::Primary(name),
-                section_attributes: todo!(),
+                section_attributes: P::SectionAttributes::new_rela(),
                 // section_flags: linker_utils::elf::shf::INFO_LINK,
                 // ty: sht::RELA,
-                min_alignment: crate::alignment::RELA_ENTRY,
                 // entsize: elf::RELA_ENTRY_SIZE,
+                min_alignment: crate::alignment::RELA_ENTRY,
                 location: None,
                 secondary_order: None,
             })
@@ -872,15 +870,15 @@ impl<'data, P: Platform> OutputSections<'data, P> {
             .opt_built_in_details::<Elf>()
             .and_then(|d| d.target_segment_type)
             .unwrap_or(linker_utils::elf::pt::LOAD);
-        if !section_attr.is_null() {
+        if section_attr.is_null() {
+            false
+        } else {
             let type_id = section_attr.ty();
             !type_id.is_rela()
                 && !type_id.is_rel()
                 && !type_id.is_symtab()
                 && !type_id.is_strtab()
                 && segment_type == linker_utils::elf::pt::LOAD
-        } else {
-            false
         }
     }
 

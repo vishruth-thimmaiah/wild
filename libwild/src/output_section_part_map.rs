@@ -230,7 +230,7 @@ fn test_merge_parts() {
         crate::output_section_id::OutputSections::<crate::elf::Elf>::for_testing();
     let (output_order, _program_segments) =
         output_sections.output_order(crate::output_kind::OutputKind::StaticExecutable(
-            crate::args::RelocationModel::NonRelocatable,
+            crate::args::elf::RelocationModel::NonRelocatable,
         ));
     let mut expected_sum_of_sums = 0;
     let all_1 = output_sections.new_part_map::<u32>().output_order_map(
@@ -308,7 +308,7 @@ fn test_output_order_map_consistent() {
         crate::output_section_id::OutputSections::<crate::elf::Elf>::for_testing();
     let (output_order, _program_segments) =
         output_sections.output_order(crate::output_kind::OutputKind::StaticExecutable(
-            crate::args::RelocationModel::NonRelocatable,
+            crate::args::elf::RelocationModel::NonRelocatable,
         ));
     let part_map = output_sections.new_part_map::<u32>();
 
@@ -361,7 +361,7 @@ fn test_output_order_map() {
         crate::output_section_id::OutputSections::<crate::elf::Elf>::for_testing();
     let (output_order, _program_segments) =
         output_sections.output_order(crate::output_kind::OutputKind::StaticExecutable(
-            crate::args::RelocationModel::NonRelocatable,
+            crate::args::elf::RelocationModel::NonRelocatable,
         ));
     let mut part_map = output_sections.new_part_map::<u32>();
 

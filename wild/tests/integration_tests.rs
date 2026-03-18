@@ -335,7 +335,7 @@ impl Linker {
 
         if !command.can_skip() {
             let mut run_config = partial_config.clone();
-            run_config.expect_errors = Vec::new();
+            run_config.expect_messages = Vec::new();
 
             command.run(&run_config)?;
             command.write_input_hashes()?;

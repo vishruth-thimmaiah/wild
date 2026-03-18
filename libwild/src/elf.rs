@@ -429,6 +429,9 @@ impl platform::Platform for Elf {
         section: layout::Section,
         scope: &Scope<'scope>,
     ) -> Result {
+        if resources.symbol_db.output_kind.is_partial_object() {
+            return Ok(());
+        }
         match state.relocations(section.index)? {
             RelocationList::Rela(relocations) => {
                 state.load_section_relocations::<A, Rela>(
@@ -2848,6 +2851,14 @@ impl platform::SectionAttributes for SectionAttributes {
 
     fn is_no_bits(&self) -> bool {
         self.ty == sht::NOBITS
+    }
+
+    fn new_rela() -> Self {
+        Self {
+            flags: linker_utils::elf::shf::INFO_LINK,
+            ty: sht::RELA,
+            entsize: elf::RELA_ENTRY_SIZE,
+        }
     }
 }
 

@@ -759,6 +759,8 @@ pub(crate) trait SectionAttributes:
 
     /// Called for custom sections that return true to `is_null`.
     fn set_to_default_type(&mut self);
+
+    fn new_rela() -> Self;
 }
 
 pub(crate) struct SourceInfo(pub(crate) Option<SourceInfoDetails>);
