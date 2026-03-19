@@ -3319,7 +3319,7 @@ impl platform::SectionAttributes for SectionAttributes {
     }
 
     fn ty(&self) -> <Self::Platform as Platform>::SectionType {
-        todo!()
+        self.ty
     }
 
     fn new_relocatable_section() -> Self {
