@@ -1831,6 +1831,7 @@ impl platform::Platform for Elf {
         builder.add_section(output_section_id::RISCV_ATTRIBUTES);
         builder.add_section(output_section_id::SHSTRTAB);
         builder.add_section(output_section_id::SYMTAB_LOCAL);
+        builder.add_section(output_section_id::SYMTAB_SHNDX);
         builder.add_section(output_section_id::STRTAB);
 
         builder.build()
@@ -1886,6 +1887,7 @@ impl platform::Platform for Elf {
             secnames::STRTAB_SECTION_NAME
             | secnames::SYMTAB_SECTION_NAME
             | secnames::SHSTRTAB_SECTION_NAME
+            | secnames::SYMTAB_SHNDX_SECTION_NAME
             | secnames::GROUP_SECTION_NAME => {
                 return SectionRuleOutcome::Discard;
             }
@@ -4497,6 +4499,12 @@ const SECTION_DEFINITIONS: [BuiltInSectionDetails; NUM_BUILT_IN_SECTIONS] = {
         is_relro: true,
         ..DEFAULT_DEFS
     };
+    defs[output_section_id::SYMTAB_SHNDX.as_usize()] = BuiltInSectionDetails {
+        kind: SectionKind::Primary(SectionName(SYMTAB_SHNDX_SECTION_NAME)),
+        ty: sht::SYMTAB_SHNDX,
+        link: &[output_section_id::SYMTAB_LOCAL],
+        ..DEFAULT_DEFS
+    };
     // Start of regular sections
     defs[output_section_id::RODATA.as_usize()] = BuiltInSectionDetails {
         kind: SectionKind::Primary(SectionName(RODATA_SECTION_NAME)),
@@ -5029,6 +5037,10 @@ const DEFAULT_SECTION_RULES: &[SectionRule<'static>] = &[
     SectionRule::exact(
         secnames::RISCV_ATTRIBUTES_SECTION_NAME,
         SectionRuleOutcome::RiscVAttribute,
+    ),
+    SectionRule::exact(
+        secnames::SYMTAB_SHNDX_SECTION_NAME,
+        SectionRuleOutcome::Discard,
     ),
     SectionRule::prefix(b".debug_", SectionRuleOutcome::Debug),
 ];
