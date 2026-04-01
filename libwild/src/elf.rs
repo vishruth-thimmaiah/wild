@@ -2934,6 +2934,7 @@ pub(crate) const PLT_ENTRY_SIZE: u64 = 0x10;
 pub(crate) const RELA_ENTRY_SIZE: u64 = 0x18;
 
 pub(crate) const SYMTAB_ENTRY_SIZE: u64 = size_of::<SymtabEntry>() as u64;
+pub(crate) const SYMTAB_SHNDX_ENTRY_SIZE: u64 = 0x4;
 pub(crate) const GNU_VERSION_ENTRY_SIZE: u64 = size_of::<Versym>() as u64;
 
 const _ASSERTS: () = {
@@ -4502,6 +4503,8 @@ const SECTION_DEFINITIONS: [BuiltInSectionDetails; NUM_BUILT_IN_SECTIONS] = {
     defs[output_section_id::SYMTAB_SHNDX.as_usize()] = BuiltInSectionDetails {
         kind: SectionKind::Primary(SectionName(SYMTAB_SHNDX_SECTION_NAME)),
         ty: sht::SYMTAB_SHNDX,
+        element_size: SYMTAB_SHNDX_ENTRY_SIZE,
+        min_alignment: alignment::SYMTAB_SHNDX_ENTRY,
         link: &[output_section_id::SYMTAB_LOCAL],
         ..DEFAULT_DEFS
     };
