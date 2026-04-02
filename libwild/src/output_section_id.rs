@@ -97,7 +97,8 @@ pub(crate) const RELA_DYN_RELATIVE: OutputSectionId =
 pub(crate) const RELA_DYN_GENERAL: OutputSectionId = part_id::RELA_DYN_GENERAL.output_section_id();
 pub(crate) const RISCV_ATTRIBUTES: OutputSectionId = part_id::RISCV_ATTRIBUTES.output_section_id();
 pub(crate) const RELRO_PADDING: OutputSectionId = part_id::RELRO_PADDING.output_section_id();
-pub(crate) const SYMTAB_SHNDX: OutputSectionId = part_id::SYMTAB_SHNDX.output_section_id();
+pub(crate) const SYMTAB_SHNDX_LOCAL: OutputSectionId = part_id::SYMTAB_SHNDX_LOCAL.output_section_id();
+pub(crate) const SYMTAB_SHNDX_GLOBAL: OutputSectionId = part_id::SYMTAB_SHNDX_GLOBAL.output_section_id();
 
 pub(crate) const RODATA: OutputSectionId = OutputSectionId::regular(0);
 pub(crate) const INIT_ARRAY: OutputSectionId = OutputSectionId::regular(1);

@@ -44,9 +44,10 @@ pub(crate) const RELA_DYN_RELATIVE: PartId = PartId(24);
 pub(crate) const RELA_DYN_GENERAL: PartId = PartId(25);
 pub(crate) const RISCV_ATTRIBUTES: PartId = PartId(26);
 pub(crate) const RELRO_PADDING: PartId = PartId(27);
-pub(crate) const SYMTAB_SHNDX: PartId = PartId(28);
+pub(crate) const SYMTAB_SHNDX_LOCAL: PartId = PartId(28);
+pub(crate) const SYMTAB_SHNDX_GLOBAL: PartId = PartId(29);
 
-pub(crate) const NUM_SINGLE_PART_SECTIONS: u32 = 29;
+pub(crate) const NUM_SINGLE_PART_SECTIONS: u32 = 30;
 
 #[cfg(test)]
 pub(crate) const NUM_BUILT_IN_PARTS: usize = NUM_SINGLE_PART_SECTIONS as usize

@@ -1014,8 +1014,13 @@ impl<'data, P: Platform> CommonGroupState<'data, P> {
         );
 
         memory_offsets.increment(
-            part_id::SYMTAB_SHNDX,
-            *self.mem_sizes.get(part_id::SYMTAB_SHNDX),
+            part_id::SYMTAB_SHNDX_LOCAL,
+            *self.mem_sizes.get(part_id::SYMTAB_SHNDX_LOCAL),
+        );
+
+        memory_offsets.increment(
+            part_id::SYMTAB_SHNDX_GLOBAL,
+            *self.mem_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL),
         );
 
         strtab_offset_start
@@ -2234,7 +2239,7 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
             FileLayoutState::NotLoaded(_) => {}
         }
 
-        P::finalise_sizes_all(&mut common.mem_sizes, resources.symbol_db);
+        P::finalise_sizes_all(&mut common.mem_sizes, output_sections, resources.symbol_db);
 
         Ok(())
     }
@@ -2778,6 +2783,20 @@ impl<'data, P: Platform> PreludeLayoutState<'data, P> {
         // both `total_sizes` and the size records in `common`. We track the extra sizes in
         // `extra_sizes` which we can then later add to both.
         let mut extra_sizes = OutputSectionPartMap::with_size(common.mem_sizes.num_parts());
+        println!(
+            "COMMON: L{}, G{}, SL{}, SG{}",
+            common.mem_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
+        println!(
+            "TOTAL: L{}, G{}, SL{}, SG{}",
+            total_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            total_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            total_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            total_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
 
         self.determine_header_sizes(
             total_sizes,
@@ -2798,11 +2817,21 @@ impl<'data, P: Platform> PreludeLayoutState<'data, P> {
         )?;
 
         let entry_size = size_of::<P::SymtabEntry>() as u64;
-        let mut symtab_shndx_size = (total_sizes.get(part_id::SYMTAB_LOCAL)
-            + common.mem_sizes.get(part_id::SYMTAB_LOCAL)
-            + total_sizes.get(part_id::SYMTAB_GLOBAL)
-            + common.mem_sizes.get(part_id::SYMTAB_GLOBAL))
-            / entry_size;
+
+        println!(
+            "COMMON: L{}, G{}, SL{}, SG{}",
+            common.mem_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
+        println!(
+            "TOTAL: L{}, G{}, SL{}, SG{}",
+            total_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            total_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            total_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            total_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
 
         if resources.symbol_db.args.should_output_partial_object() {
             let mut num_section_syms = 0;
@@ -2817,19 +2846,39 @@ impl<'data, P: Platform> PreludeLayoutState<'data, P> {
             }
             extra_sizes.increment(part_id::SYMTAB_LOCAL, num_section_syms * entry_size);
             extra_sizes.increment(part_id::STRTAB, section_names_size);
-            symtab_shndx_size += num_section_syms;
+            extra_sizes.increment(part_id::SYMTAB_SHNDX_LOCAL, num_section_syms * 4);
         }
-        if output_sections
-            .output_index_of_section(output_section_id::SYMTAB_SHNDX)
-            .is_some()
-        {
-            extra_sizes.increment(part_id::SYMTAB_SHNDX, symtab_shndx_size * 4);
-        }
+        println!(
+            "EXTRA: L{}, G{}, SL{}, SG{}",
+            extra_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            extra_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            extra_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            extra_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
 
+        if output_sections
+            .output_index_of_section(output_section_id::SYMTAB_SHNDX_LOCAL)
+            .is_some()
+        {}
         // We need to allocate both our own size record and the group totals, since they've already
         // been computed.
         common.mem_sizes.merge(&extra_sizes);
         total_sizes.merge(&extra_sizes);
+
+        println!(
+            "COMMON: L{}, G{}, SL{}, SG{}",
+            common.mem_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            common.mem_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
+        println!(
+            "TOTAL: L{}, G{}, SL{}, SG{}",
+            total_sizes.get(part_id::SYMTAB_LOCAL) / 24,
+            total_sizes.get(part_id::SYMTAB_GLOBAL) / 24,
+            total_sizes.get(part_id::SYMTAB_SHNDX_LOCAL) / 4,
+            total_sizes.get(part_id::SYMTAB_SHNDX_GLOBAL) / 4
+        );
 
         Ok(())
     }
@@ -2962,7 +3011,7 @@ impl<'data, P: Platform> PreludeLayoutState<'data, P> {
 
         let num_sections_before_shndx = keep_sections.values_iter().filter(|p| **p).count();
         if num_sections_before_shndx >= object::elf::SHN_LORESERVE as usize {
-            *keep_sections.get_mut(output_section_id::SYMTAB_SHNDX) = true;
+            *keep_sections.get_mut(output_section_id::SYMTAB_SHNDX_LOCAL) = true;
         }
         let num_sections = keep_sections.values_iter().filter(|p| **p).count();
 
