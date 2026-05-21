@@ -232,7 +232,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                         last_section_id = Some(section_id);
                                     }
                                     ContentsCommand::SymbolAssignment(assignment) => {
-                                        let placement = if let Some(id) = last_section_id {
+                                        let loc = if let Some(id) = last_section_id {
                                             SymbolLoc::SectionEnd(id)
                                         } else {
                                             SymbolLoc::SectionStart(primary_section_id)
@@ -240,7 +240,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                         let placement = SymbolPlacement::Redirect(Redirect {
                                             kind: RedirectKind::Script,
                                             expression: assignment.expr.clone(),
-                                            loc: placement,
+                                            loc,
                                         });
                                         symbol_defs.push(InternalSymDefInfo::new(
                                             placement,
@@ -249,7 +249,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                     }
                                     ContentsCommand::Align(a) => extra_min_alignment = *a,
                                     ContentsCommand::Provide(provide) => {
-                                        let placement = if let Some(id) = last_section_id {
+                                        let loc = if let Some(id) = last_section_id {
                                             SymbolLoc::SectionEnd(id)
                                         } else {
                                             SymbolLoc::SectionStart(primary_section_id)
@@ -257,7 +257,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                         let placement = SymbolPlacement::Redirect(Redirect {
                                             kind: RedirectKind::Script,
                                             expression: provide.value.clone(),
-                                            loc: placement,
+                                            loc,
                                         });
                                         symbol_defs.push(
                                             InternalSymDefInfo::new(placement, provide.name)
