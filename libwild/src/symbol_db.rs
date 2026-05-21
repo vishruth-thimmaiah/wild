@@ -2014,8 +2014,7 @@ impl<'data, P: Platform> Prelude<'data, P> {
                 SymbolPlacement::SectionStart(_)
                 | SymbolPlacement::SectionEnd(_)
                 | SymbolPlacement::SectionGroupEnd(_)
-                | SymbolPlacement::LoadBaseAddress
-                | SymbolPlacement::SegmentStart(_, _) => {
+                | SymbolPlacement::LoadBaseAddress => {
                     outputs.add_non_versioned(PendingSymbol::new(symbol_id, definition.name));
                     ValueFlags::NON_INTERPOSABLE
                 }
@@ -2063,7 +2062,6 @@ impl<P: Platform> InternalSymDefInfo<'_, P> {
             // outside of the selected section. It's tricky for us to find the closest section
             // at this point in the code, so we pick an arbitrary section.
             SymbolPlacement::LoadBaseAddress => Some(output_section_id::TEXT),
-            SymbolPlacement::SegmentStart(_, _) => Some(output_section_id::TEXT),
         }
     }
 }

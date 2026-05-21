@@ -153,16 +153,11 @@ impl<'data> LayoutRulesBuilder<'data> {
                         .with_hidden(provide.hidden),
                 );
             } else if let linker_script::Command::SymbolDefinition { name, value } = cmd {
-                let placement = if let Expression::SegmentStart(name, expr) = value {
-                    let default = crate::expression_eval::eval_constant_expr(expr).unwrap_or(0);
-                    SymbolPlacement::SegmentStart(*name, default)
-                } else {
-                    SymbolPlacement::Redirect(Redirect {
-                        kind: RedirectKind::Script,
-                        expression: value.to_owned(),
-                        loc: SymbolLoc::None,
-                    })
-                };
+                let placement = SymbolPlacement::Redirect(Redirect {
+                    kind: RedirectKind::Script,
+                    expression: value.to_owned(),
+                    loc: SymbolLoc::None,
+                });
                 symbol_defs.push(crate::parsing::InternalSymDefInfo::new(placement, name));
             } else if let linker_script::Command::Sections(sections) = cmd {
                 let mut location = None;
@@ -237,31 +232,16 @@ impl<'data> LayoutRulesBuilder<'data> {
                                         last_section_id = Some(section_id);
                                     }
                                     ContentsCommand::SymbolAssignment(assignment) => {
-                                        use crate::linker_script::Expression;
-                                        let placement = match &assignment.expr {
-                                            Expression::LocationCounter => {
-                                                if let Some(id) = last_section_id {
-                                                    SymbolPlacement::SectionEnd(id)
-                                                } else {
-                                                    SymbolPlacement::SectionStart(
-                                                        primary_section_id,
-                                                    )
-                                                }
-                                            }
-                                            Expression::SegmentStart(name, default_expr) => {
-                                                let default =
-                                                    crate::expression_eval::eval_constant_expr(
-                                                        default_expr,
-                                                    )
-                                                    .unwrap_or(0);
-                                                SymbolPlacement::SegmentStart(*name, default)
-                                            }
-                                            _other => {
-                                                // Unsupported RHS expression: skip this symbol
-                                                // definition
-                                                continue;
-                                            }
+                                        let placement = if let Some(id) = last_section_id {
+                                            SymbolLoc::SectionEnd(id)
+                                        } else {
+                                            SymbolLoc::SectionStart(primary_section_id)
                                         };
+                                        let placement = SymbolPlacement::Redirect(Redirect {
+                                            kind: RedirectKind::Script,
+                                            expression: assignment.expr.clone(),
+                                            loc: placement,
+                                        });
                                         symbol_defs.push(InternalSymDefInfo::new(
                                             placement,
                                             assignment.name,
