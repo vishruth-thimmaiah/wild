@@ -2020,15 +2020,11 @@ impl<'data, P: Platform> Prelude<'data, P> {
                 }
                 SymbolPlacement::Redirect(redirect) => {
                     outputs.add_non_versioned(PendingSymbol::new(symbol_id, definition.name));
-                    let mut flags = ValueFlags::NON_INTERPOSABLE | ValueFlags::ABSOLUTE;
-                    redirect.expression.visit_expressions(&mut |e| {
-                        if matches!(e, crate::linker_script::Expression::Symbol(_)) {
-                            flags.remove(ValueFlags::ABSOLUTE);
-                            return false;
-                        }
-                        true
-                    });
-                    flags
+                    if matches!(redirect.loc, SymbolLoc::None) {
+                        ValueFlags::NON_INTERPOSABLE | ValueFlags::ABSOLUTE
+                    } else {
+                        ValueFlags::NON_INTERPOSABLE
+                    }
                 }
             };
             if definition.symbol.is_hidden() {

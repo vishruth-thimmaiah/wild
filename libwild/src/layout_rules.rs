@@ -130,6 +130,25 @@ impl SectionOutputInfo {
     }
 }
 
+fn loc_for_global_expr(
+    expr: &crate::linker_script::Expression<'_>,
+    section_id: Option<OutputSectionId>,
+) -> SymbolLoc {
+    let mut loc = SymbolLoc::None;
+    expr.visit_expressions(&mut |e| match e {
+        crate::linker_script::Expression::SegmentStart(..) => {
+            if let Some(section_id) = section_id {
+                loc = SymbolLoc::SectionEnd(section_id);
+            } else {
+                loc = SymbolLoc::FirstSection;
+            }
+            false
+        }
+        _ => true,
+    });
+    loc
+}
+
 impl<'data> LayoutRulesBuilder<'data> {
     /// Records information about any sections and symbols declared by the linker script.
     pub(crate) fn process_linker_script<P: Platform>(
@@ -141,12 +160,14 @@ impl<'data> LayoutRulesBuilder<'data> {
         let mut assertions = Vec::new();
         let mut memory_regions = Vec::new();
 
+        let mut current_section_id = None;
+
         for cmd in &input.script.commands {
             if let linker_script::Command::Provide(provide) = cmd {
                 let placement = SymbolPlacement::Redirect(Redirect {
                     kind: RedirectKind::Script,
                     expression: provide.value.clone(),
-                    loc: SymbolLoc::None,
+                    loc: loc_for_global_expr(&provide.value, current_section_id),
                 });
                 symbol_defs.push(
                     crate::parsing::InternalSymDefInfo::new(placement, provide.name)
@@ -156,7 +177,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                 let placement = SymbolPlacement::Redirect(Redirect {
                     kind: RedirectKind::Script,
                     expression: value.to_owned(),
-                    loc: SymbolLoc::None,
+                    loc: loc_for_global_expr(value, current_section_id),
                 });
                 symbol_defs.push(crate::parsing::InternalSymDefInfo::new(placement, name));
             } else if let linker_script::Command::Sections(sections) = cmd {
@@ -170,8 +191,6 @@ impl<'data> LayoutRulesBuilder<'data> {
                 // though, it doesn't seem worthwhile having two separate alignment properties on a
                 // section, one of which doesn't affect the header value.
                 let mut extra_min_alignment = alignment::MIN;
-
-                let mut current_section_id = None;
 
                 for sec_cmd in &sections.commands {
                     match sec_cmd {
