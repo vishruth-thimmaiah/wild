@@ -8,7 +8,7 @@ bss_start = SEGMENT_START("bss", 0x13);
 SECTIONS {
   . = 0x600000;
   .text : {
-	local_text_start = SEGMENT_START("text", 0x10);
+    local_text_start = SEGMENT_START("text", 0x10);
     *(.text .text.*)
   }
   .rodata : { *(.rodata .rodata.*) }
