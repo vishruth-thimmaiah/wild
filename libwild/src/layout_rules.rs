@@ -193,11 +193,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                                 )?);
                                             }
                                         }
-                                        _ => {
-                                            return Err(crate::error!(
-                                                "Illegal use of /DISCARD/ section"
-                                            ));
-                                        }
+                                        _ => crate::bail!("Illegal use of /DISCARD/ section"),
                                     }
                                 }
                             }

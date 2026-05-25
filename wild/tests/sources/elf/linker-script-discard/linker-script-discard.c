@@ -1,5 +1,6 @@
 //#Mode:dynamic
 //#RunEnabled:false
+//#EnableLinker:lld
 //#LinkArgs:-shared -z now -T ./linker-script-discard.ld
 //#DiffIgnore:section.got
 //#DiffIgnore:section.riscv.attributes
@@ -8,7 +9,8 @@
 //#DiffIgnore:riscv_attributes.*
 //#DiffIgnore:segment.LOAD.RX.alignment
 //#DiffIgnore:segment.LOAD.RWX.alignment
-//#DoesNotContain:DISCARD
+//#DoesNotContain:/DISCARD/
 //#DoesNotContain:.text
+//#NoSym:foo
 
-int foo() { return 0; }
+static int foo() { return 0; }
