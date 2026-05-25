@@ -4177,10 +4177,10 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
         for (sym_index, sym) in self.object.enumerate_symbols() {
             let symbol_id = self.symbol_id_range().input_to_id(sym_index);
 
-            if let Some(section_index) = self.object.symbol_section(sym, sym_index)? {
-                if matches!(self.sections[section_index.0], SectionSlot::Discard) {
-                    continue;
-                }
+            if let Some(section_index) = self.object.symbol_section(sym, sym_index)?
+                && matches!(self.sections[section_index.0], SectionSlot::Discard)
+            {
+                continue;
             }
 
             if !can_export_symbol(sym, symbol_id, resources, export_all_dynamic) {
@@ -4212,14 +4212,12 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
         scope: &Scope<'scope>,
     ) -> Result {
         let sym_index = self.symbol_id_range.id_to_input(symbol_id);
-        let sym = self
-            .object
-            .symbol(sym_index)?;
+        let sym = self.object.symbol(sym_index)?;
 
-        if let Some(section_index) = self.object.symbol_section(sym, sym_index)? {
-            if matches!(self.sections[section_index.0], SectionSlot::Discard) {
-                return Ok(());
-            }
+        if let Some(section_index) = self.object.symbol_section(sym, sym_index)?
+            && matches!(self.sections[section_index.0], SectionSlot::Discard)
+        {
+            return Ok(());
         }
 
         // Shared objects that we're linking against sometimes define symbols that are also defined
