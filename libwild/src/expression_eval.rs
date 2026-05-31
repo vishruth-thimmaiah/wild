@@ -111,7 +111,7 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
                 Ok(layout.mem_offset + layout.mem_size)
             }
             SymbolLoc::FirstSection | SymbolLoc::None => Ok(0),
-            SymbolLoc::Expression(expr) => eval!(expr),
+            SymbolLoc::Expression(expr, _) => eval!(expr),
         },
 
         Expression::Symbol(name) => symbol_resolution_callback(name),

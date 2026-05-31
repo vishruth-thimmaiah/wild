@@ -291,7 +291,13 @@ impl<'data> LayoutRulesBuilder<'data> {
                         }
                         SectionCommand::SetLocation(new_location) => {
                             location = Some(new_location.address.clone());
-                            loc = SymbolLoc::Expression(new_location.address.clone());
+                            let section_id = match loc {
+                                SymbolLoc::Expression(_, section_id) => section_id,
+                                SymbolLoc::SectionStart(section_id)
+                                | SymbolLoc::SectionEnd(section_id) => Some(section_id),
+                                _ => None,
+                            };
+                            loc = SymbolLoc::Expression(new_location.address.clone(), section_id);
                         }
                         SectionCommand::Align(a) => extra_min_alignment = *a,
                         SectionCommand::Assert(assert_cmd) => {
