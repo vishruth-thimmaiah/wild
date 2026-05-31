@@ -12,8 +12,6 @@ use crate::input_data::InputLinkerScript;
 use crate::input_data::InputRef;
 use crate::linker_script;
 use crate::linker_script::ContentsCommand;
-use crate::linker_script::Expression;
-use crate::linker_script::Location;
 use crate::linker_script::SectionCommand;
 use crate::output_section_id;
 use crate::output_section_id::OutputSectionId;
@@ -217,14 +215,9 @@ impl<'data> LayoutRulesBuilder<'data> {
                                 .max(replace(&mut extra_min_alignment, alignment::MIN));
 
                             let section_location = match &sec.start_address_expression {
-                                Some(Expression::Number(address)) => {
+                                Some(address) => {
                                     location.take();
-                                    Some(Location { address: *address })
-                                }
-                                Some(_) => {
-                                    return Err(crate::error!(
-                                        "Only numeric output section start expressions are currently supported"
-                                    ));
+                                    Some(address.clone())
                                 }
                                 None => location.take(),
                             };
@@ -302,7 +295,9 @@ impl<'data> LayoutRulesBuilder<'data> {
                                 }
                             }
                         }
-                        SectionCommand::SetLocation(new_location) => location = Some(*new_location),
+                        SectionCommand::SetLocation(new_location) => {
+                            location = Some(new_location.address.clone());
+                        }
                         SectionCommand::Align(a) => extra_min_alignment = *a,
                         SectionCommand::Assert(assert_cmd) => {
                             assertions.push(assert_cmd.clone());

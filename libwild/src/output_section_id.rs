@@ -34,7 +34,6 @@ use core::slice;
 use hashbrown::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::iter::Copied;
 use std::ops::Range;
 
 /// Number of sections that we have built-in IDs for.
@@ -171,18 +170,18 @@ pub(crate) struct OutputSections<'data, P: Platform> {
 /// Encodes the order of output sections and the start and end of each program segment. This struct
 /// is intended to be used by iterating over it.
 #[derive(Debug)]
-pub(crate) struct OutputOrder {
-    events: Vec<OrderEvent>,
+pub(crate) struct OutputOrder<'data> {
+    events: Vec<OrderEvent<'data>>,
 }
 
 pub(crate) struct OutputOrderDisplay<'a, 'data, P: Platform> {
-    order: &'a OutputOrder,
+    order: &'a OutputOrder<'data>,
     sections: &'a OutputSections<'data, P>,
     program_segments: &'a ProgramSegments<P::ProgramSegmentDef>,
 }
 
 pub(crate) struct OutputOrderBuilder<'scope, 'data, P: Platform> {
-    events: Vec<OrderEvent>,
+    events: Vec<OrderEvent<'data>>,
 
     program_segments: ProgramSegments<P::ProgramSegmentDef>,
 
@@ -233,10 +232,10 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
         // in a segment. Sections without ALLOC (like custom sections before their flags
         // are propagated) will have their location handled directly in layout_section_parts
         // via section_info.location.
-        if let Some(location) = section_info.location
+        if let Some(location) = &section_info.location
             && section_info.section_attributes.is_alloc()
         {
-            self.events.push(OrderEvent::SetLocation(location));
+            self.events.push(OrderEvent::SetLocation(location.clone()));
         }
 
         for segment_id in start {
@@ -366,7 +365,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
         }
     }
 
-    pub(crate) fn build(mut self) -> (OutputOrder, ProgramSegments<P::ProgramSegmentDef>) {
+    pub(crate) fn build(mut self) -> (OutputOrder<'data>, ProgramSegments<P::ProgramSegmentDef>) {
         for segment_id in self.active_segment_kinds.into_iter().flatten() {
             self.events.push(OrderEvent::SegmentEnd(segment_id));
         }
@@ -462,7 +461,7 @@ pub(crate) struct SectionOutputInfo<'data, P: Platform> {
     pub(crate) kind: SectionKind<'data>,
     pub(crate) section_attributes: P::SectionAttributes,
     pub(crate) min_alignment: Alignment,
-    pub(crate) location: Option<linker_script::Location>,
+    pub(crate) location: Option<linker_script::Expression<'data>>,
     pub(crate) secondary_order: Option<SecondaryOrder>,
 }
 
@@ -555,12 +554,12 @@ impl OutputSectionId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum OrderEvent {
+#[derive(Debug, Clone)]
+pub(crate) enum OrderEvent<'data> {
     SegmentStart(ProgramSegmentId),
     SegmentEnd(ProgramSegmentId),
     Section(OutputSectionId),
-    SetLocation(linker_script::Location),
+    SetLocation(linker_script::Expression<'data>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -600,7 +599,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         for custom in custom_sections {
             let location = args
                 .start_address_for_section(custom.name)
-                .map(|address| linker_script::Location { address });
+                .map(linker_script::Expression::Number);
             let section_id = self.add_named_section(custom.name, custom.alignment, location);
 
             section_part_ids[custom.index.0] = section_id.part_id_with_alignment(custom.alignment);
@@ -618,7 +617,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         ] {
             if let Some(address) = args.start_address_for_section(name) {
                 self.section_infos.get_mut(section_id).location =
-                    Some(linker_script::Location { address });
+                    Some(linker_script::Expression::Number(address));
             }
         }
     }
@@ -627,7 +626,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         &mut self,
         name: SectionName<'data>,
         min_alignment: Alignment,
-        location: Option<linker_script::Location>,
+        location: Option<linker_script::Expression<'data>>,
     ) -> OutputSectionId {
         *self.custom_by_name.entry(name).or_insert_with(|| {
             self.section_infos.add_new(SectionOutputInfo {
@@ -700,7 +699,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
     pub(crate) fn output_order(
         &self,
         output_kind: OutputKind,
-    ) -> (OutputOrder, ProgramSegments<P::ProgramSegmentDef>) {
+    ) -> (OutputOrder<'data>, ProgramSegments<P::ProgramSegmentDef>) {
         timing_phase!("Compute output order");
 
         let mut custom = CustomSectionIds::default();
@@ -873,18 +872,18 @@ impl std::fmt::Display for OutputSectionId {
     }
 }
 
-impl<'a> IntoIterator for &'a OutputOrder {
-    type Item = OrderEvent;
+impl<'data, 'a> IntoIterator for &'a OutputOrder<'data> {
+    type Item = OrderEvent<'data>;
 
-    type IntoIter = Copied<slice::Iter<'a, OrderEvent>>;
+    type IntoIter = std::iter::Cloned<slice::Iter<'a, OrderEvent<'data>>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.events.iter().copied()
+        self.events.iter().cloned()
     }
 }
 
-impl OutputOrder {
-    pub(crate) fn display<'a, 'data, P: Platform>(
+impl<'data> OutputOrder<'data> {
+    pub(crate) fn display<'a, P: Platform>(
         &'a self,
         sections: &'a OutputSections<'data, P>,
         program_segments: &'a ProgramSegments<P::ProgramSegmentDef>,
@@ -918,9 +917,7 @@ impl<'data, P: Platform> Display for OutputOrderDisplay<'_, 'data, P> {
                 OrderEvent::Section(output_section_id) => {
                     writeln!(f, "  {}", self.sections.display_name(*output_section_id))?;
                 }
-                OrderEvent::SetLocation(location) => {
-                    writeln!(f, "SET_LOCATION(0x{:x})", location.address)?;
-                }
+                OrderEvent::SetLocation(expr) => writeln!(f, "SET_LOCATION({expr:?})")?,
             }
         }
 

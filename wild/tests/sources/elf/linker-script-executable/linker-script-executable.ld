@@ -2,7 +2,7 @@ ENTRY(begin_here)
 
 SECTIONS
 {
-    . = 0x600000;
+    . = 0x300000 * 2;
     .text : {
         start_of_text = .;
         *(.text)
