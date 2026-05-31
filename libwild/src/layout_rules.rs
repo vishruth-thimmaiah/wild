@@ -128,10 +128,10 @@ impl SectionOutputInfo {
     }
 }
 
-fn loc_for_global_expr(
-    expr: &crate::linker_script::Expression<'_>,
+fn loc_for_global_expr<'data>(
+    expr: &crate::linker_script::Expression<'data>,
     section_id: Option<OutputSectionId>,
-) -> SymbolLoc {
+) -> SymbolLoc<'data> {
     let mut loc = SymbolLoc::None;
     expr.visit_expressions(&mut |e| match e {
         crate::linker_script::Expression::SegmentStart(..) => {
@@ -159,6 +159,7 @@ impl<'data> LayoutRulesBuilder<'data> {
         let mut memory_regions = Vec::new();
 
         let mut current_section_id = None;
+        let mut loc = SymbolLoc::FirstSection;
 
         for cmd in &input.script.commands {
             if let linker_script::Command::Provide(provide) = cmd {
@@ -228,8 +229,10 @@ impl<'data> LayoutRulesBuilder<'data> {
                                 section_location,
                             );
                             current_section_id = Some(primary_section_id);
+                            loc = SymbolLoc::SectionEnd(primary_section_id);
 
                             let mut last_section_id = None;
+                            let mut last_loc = SymbolLoc::SectionStart(primary_section_id);
 
                             for contents_cmd in &sec.commands {
                                 match contents_cmd {
@@ -258,17 +261,13 @@ impl<'data> LayoutRulesBuilder<'data> {
                                         }
 
                                         last_section_id = Some(section_id);
+                                        last_loc = SymbolLoc::SectionEnd(section_id);
                                     }
                                     ContentsCommand::SymbolAssignment(assignment) => {
-                                        let loc = if let Some(id) = last_section_id {
-                                            SymbolLoc::SectionEnd(id)
-                                        } else {
-                                            SymbolLoc::SectionStart(primary_section_id)
-                                        };
                                         let placement = SymbolPlacement::Redirect(Redirect {
                                             kind: RedirectKind::Script,
                                             expression: assignment.expr.clone(),
-                                            loc,
+                                            loc: last_loc.clone(),
                                         });
                                         symbol_defs.push(InternalSymDefInfo::new(
                                             placement,
@@ -277,15 +276,10 @@ impl<'data> LayoutRulesBuilder<'data> {
                                     }
                                     ContentsCommand::Align(a) => extra_min_alignment = *a,
                                     ContentsCommand::Provide(provide) => {
-                                        let loc = if let Some(id) = last_section_id {
-                                            SymbolLoc::SectionEnd(id)
-                                        } else {
-                                            SymbolLoc::SectionStart(primary_section_id)
-                                        };
                                         let placement = SymbolPlacement::Redirect(Redirect {
                                             kind: RedirectKind::Script,
                                             expression: provide.value.clone(),
-                                            loc,
+                                            loc: last_loc.clone(),
                                         });
                                         symbol_defs.push(
                                             InternalSymDefInfo::new(placement, provide.name)
@@ -297,21 +291,17 @@ impl<'data> LayoutRulesBuilder<'data> {
                         }
                         SectionCommand::SetLocation(new_location) => {
                             location = Some(new_location.address.clone());
+                            loc = SymbolLoc::Expression(new_location.address.clone());
                         }
                         SectionCommand::Align(a) => extra_min_alignment = *a,
                         SectionCommand::Assert(assert_cmd) => {
                             assertions.push(assert_cmd.clone());
                         }
                         SectionCommand::Provide(provide) => {
-                            let placement = if let Some(id) = current_section_id {
-                                SymbolLoc::SectionEnd(id)
-                            } else {
-                                SymbolLoc::FirstSection
-                            };
                             let placement = SymbolPlacement::Redirect(Redirect {
                                 kind: RedirectKind::Script,
                                 expression: provide.value.clone(),
-                                loc: placement,
+                                loc: loc.clone(),
                             });
                             symbol_defs.push(
                                 InternalSymDefInfo::new(placement, provide.name)
@@ -319,15 +309,10 @@ impl<'data> LayoutRulesBuilder<'data> {
                             );
                         }
                         SectionCommand::SymbolAssignment(assignment) => {
-                            let loc = if let Some(id) = current_section_id {
-                                SymbolLoc::SectionEnd(id)
-                            } else {
-                                SymbolLoc::FirstSection
-                            };
                             let placement = SymbolPlacement::Redirect(Redirect {
                                 kind: RedirectKind::Script,
                                 expression: assignment.expr.clone(),
-                                loc,
+                                loc: loc.clone(),
                             });
                             symbol_defs.push(InternalSymDefInfo::new(placement, assignment.name));
                         }

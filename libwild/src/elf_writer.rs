@@ -4447,6 +4447,7 @@ fn get_defsym_attributes(
             }
             SymbolLoc::FirstSection => 1,
             SymbolLoc::None => return Ok((object::elf::SHN_ABS.into(), object::elf::STT_NOTYPE)),
+            SymbolLoc::Expression(_) => return Ok((object::elf::SHN_ABS.into(), object::elf::STT_NOTYPE)),
         };
         Ok((SymbolSection::Index(shndx), object::elf::STT_NOTYPE))
     }

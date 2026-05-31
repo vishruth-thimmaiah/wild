@@ -490,7 +490,7 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
     if let SymbolPlacement::Redirect(redirect) = &def_info.placement {
         let value = crate::expression_eval::evaluate_expression(
             &redirect.expression,
-            redirect.loc,
+            &redirect.loc,
             section_layouts,
             output_sections,
             memory_regions,
@@ -4858,7 +4858,7 @@ fn layout_section_parts<'data, P: Platform>(
                         // The OrderEvent::SetLocation is ELF-specific only.
                         mem_offset = crate::expression_eval::evaluate_expression(
                             &expr,
-                            crate::parsing::SymbolLoc::None,
+                            &crate::parsing::SymbolLoc::None,
                             &empty_section_layouts,
                             output_sections,
                             memory_regions,
@@ -4894,7 +4894,7 @@ fn layout_section_parts<'data, P: Platform>(
                 if let Some(ref expr) = section_info.location {
                     mem_offset = crate::expression_eval::evaluate_expression(
                         expr,
-                        crate::parsing::SymbolLoc::None,
+                        &crate::parsing::SymbolLoc::None,
                         &empty_section_layouts,
                         output_sections,
                         memory_regions,

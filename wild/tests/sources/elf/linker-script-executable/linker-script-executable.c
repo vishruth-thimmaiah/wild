@@ -3,18 +3,19 @@
 //#DiffIgnore: segment.LOAD.RW.alignment
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
 //#SkipArch:riscv64
+//#EnableLinker:lld
 
 #include <stddef.h>
 
 #include "../common/runtime.h"
 
 int value = 42;
-extern const char start_of_text;
+extern const char start_of_sections;
 extern const char start_of_data;
 extern const char start_of_512;
 
 void begin_here(void) {
-  if ((size_t)&start_of_text != 0x600000) {
+  if ((size_t)&start_of_sections != 0x600000) {
     exit_syscall(10);
   }
 
