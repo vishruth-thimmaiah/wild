@@ -21,6 +21,7 @@ use crate::input_data::InputRef;
 use crate::input_data::PRELUDE_FILE_ID;
 use crate::input_section_id::SectionIdRange;
 use crate::layout_rules::SectionKind;
+use crate::linker_script::Expression;
 use crate::output_section_id;
 use crate::output_section_id::OrderEvent;
 use crate::output_section_id::OutputOrder;
@@ -4830,8 +4831,24 @@ fn layout_section_parts<'data, P: Platform>(
         output_sections,
     );
 
+    let empty_section_layouts = OutputSectionMap::with_size(output_sections.num_sections());
+
+    let expression_eval = |expr: &Expression<'data>| {
+        crate::expression_eval::evaluate_expression(
+            expr,
+            &crate::parsing::SymbolLoc::None,
+            &empty_section_layouts,
+            output_sections,
+            &memory_regions,
+            &symbol_db,
+            &|_| {
+                bail!("Symbols with the set location operation are not yet supported.");
+            },
+        )
+    };
+
     let mut file_offset = 0;
-    let mut mem_offset = output_sections.base_address;
+    let mut mem_offset = expression_eval(&output_sections.base_address)?;
     let mut nonalloc_mem_offsets: OutputSectionMap<u64> =
         OutputSectionMap::with_size(output_sections.num_sections());
     let mut reloc_alloc_mem_offsets: OutputSectionMap<u64> =
@@ -4840,8 +4857,6 @@ fn layout_section_parts<'data, P: Platform>(
     let mut pending_location = None;
 
     let mut records_out = output_sections.new_part_map();
-
-    let empty_section_layouts = OutputSectionMap::with_size(output_sections.num_sections());
 
     for event in output_order {
         match event {
@@ -4856,19 +4871,7 @@ fn layout_section_parts<'data, P: Platform>(
                         .unwrap_or_else(|| args.loadable_segment_alignment());
                     if let Some(expr) = pending_location.take() {
                         // The OrderEvent::SetLocation is ELF-specific only.
-                        mem_offset = crate::expression_eval::evaluate_expression(
-                            &expr,
-                            &crate::parsing::SymbolLoc::None,
-                            &empty_section_layouts,
-                            output_sections,
-                            memory_regions,
-                            symbol_db,
-                            &|_name| {
-                                bail!(
-                                    "Symbols with the set location operation is not yet supported."
-                                );
-                            },
-                        )?;
+                        mem_offset = expression_eval(&expr)?;
                         file_offset =
                             segment_alignment.align_modulo(mem_offset, file_offset as u64) as usize;
                     } else {
@@ -4892,17 +4895,7 @@ fn layout_section_parts<'data, P: Platform>(
                 let part_id_range = section_id.part_id_range();
                 let max_alignment = sizes.max_alignment(part_id_range.clone(), output_sections);
                 if let Some(ref expr) = section_info.location {
-                    mem_offset = crate::expression_eval::evaluate_expression(
-                        expr,
-                        &crate::parsing::SymbolLoc::None,
-                        &empty_section_layouts,
-                        output_sections,
-                        memory_regions,
-                        symbol_db,
-                        &|_name| {
-                            bail!("Symbols with the set location operation is not yet supported.");
-                        },
-                    )?;
+                    mem_offset = expression_eval(&expr)?;
                 }
 
                 records_out[part_id_range.clone()]

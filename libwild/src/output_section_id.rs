@@ -17,6 +17,7 @@ use crate::alignment::Alignment;
 use crate::alignment::NUM_ALIGNMENTS;
 use crate::layout_rules::SectionKind;
 use crate::linker_script;
+use crate::linker_script::Expression;
 use crate::output_kind::OutputKind;
 use crate::output_section_map::OutputSectionMap;
 use crate::output_section_part_map::OutputSectionPartMap;
@@ -153,7 +154,7 @@ pub(crate) const NUM_BUILT_IN_REGULAR_SECTIONS: usize = 16;
 #[derive(Debug)]
 pub(crate) struct OutputSections<'data, P: Platform> {
     /// The base address for our output binary.
-    pub(crate) base_address: u64,
+    pub(crate) base_address: Expression<'data>,
     pub(crate) section_infos: OutputSectionMap<SectionOutputInfo<'data, P>>,
 
     // TODO: Consider moving this to Layout. We can't populate this until we know which output
@@ -659,6 +660,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
 
     pub(crate) fn with_base_address(base_address: u64) -> Self {
         let section_infos = P::built_in_section_infos();
+        let base_address = Expression::Number(base_address);
 
         Self {
             section_infos: OutputSectionMap::from_values(section_infos),
@@ -838,6 +840,10 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         section_id: OutputSectionId,
     ) -> bool {
         P::will_emit_section_symbol_for_partial_objects(self, section_id)
+    }
+
+    pub(crate) fn set_base_address(&mut self, base_address: Expression<'data>) {
+        self.base_address = base_address;
     }
 
     #[cfg(test)]
