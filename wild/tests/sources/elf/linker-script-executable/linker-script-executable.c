@@ -1,8 +1,16 @@
+//#Config:default
 //#LinkerScript:linker-script-executable.ld
 //#Object:runtime.c
 //#DiffIgnore: segment.LOAD.RW.alignment
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
 //#SkipArch:riscv64
+
+//#Config:check_start
+//#LinkerScript:linker-script-executable.ld
+//#LinkerScript:linker-script-check-start.ld
+//#Object:runtime.c
+// .text is the first section in ld, so this test wouldn't work with ld.
+//#SkipLinker:ld
 
 #include <stddef.h>
 
