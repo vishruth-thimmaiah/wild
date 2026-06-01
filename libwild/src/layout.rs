@@ -4831,6 +4831,8 @@ fn layout_section_parts<'data, P: Platform>(
         output_sections,
     );
 
+    // Create an empty section layout for now, until we can support using linker script
+    // commands.
     let empty_section_layouts = OutputSectionMap::with_size(output_sections.num_sections());
 
     let expression_eval = |expr: &Expression<'data>| {
@@ -4839,8 +4841,8 @@ fn layout_section_parts<'data, P: Platform>(
             &crate::parsing::SymbolLoc::None,
             &empty_section_layouts,
             output_sections,
-            &memory_regions,
-            &symbol_db,
+            memory_regions,
+            symbol_db,
             &|_| {
                 bail!("Symbols with the set location operation are not yet supported.");
             },
@@ -4895,7 +4897,7 @@ fn layout_section_parts<'data, P: Platform>(
                 let part_id_range = section_id.part_id_range();
                 let max_alignment = sizes.max_alignment(part_id_range.clone(), output_sections);
                 if let Some(ref expr) = section_info.location {
-                    mem_offset = expression_eval(&expr)?;
+                    mem_offset = expression_eval(expr)?;
                 }
 
                 records_out[part_id_range.clone()]
