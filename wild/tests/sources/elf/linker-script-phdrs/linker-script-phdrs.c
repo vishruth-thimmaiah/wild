@@ -7,6 +7,13 @@
 //#DiffIgnore:segment.RISCV_ATTRIBUTES.*
 // GNU ld emits `.riscv.attributes`, but Wild does not
 //#DiffIgnore:riscv_attributes.*
+//#ExpectProgramHeader:LOAD
+//#NoProgramHeader:DYNAMIC
+//#NoProgramHeader:PHDR
+//#NoProgramHeader:NOTE
+//#NoProgramHeader:GNU_STACK
+//#NoProgramHeader:GNU_RELRO
+//#NoProgramHeader:GNU_PROPERTY
 
 const char message[] = "Hello PHDRS";
 

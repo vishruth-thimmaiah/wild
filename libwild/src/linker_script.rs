@@ -7,6 +7,7 @@ use crate::args::Modifiers;
 use crate::error;
 use crate::error::Context as _;
 use crate::error::Result;
+use object::Wrap;
 use std::path::Path;
 use winnow::BStr;
 use winnow::Parser as _;
@@ -490,14 +491,14 @@ fn parse_phdr<'input>(input: &mut &'input BStr) -> winnow::Result<Phdr<'input>> 
         let ptype_str = parse_token(input)?;
 
         match ptype_str {
-            b"PT_NULL" => Expression::Number(object::elf::PT_NULL.into()),
-            b"PT_LOAD" => Expression::Number(object::elf::PT_LOAD.into()),
-            b"PT_DYNAMIC" => Expression::Number(object::elf::PT_DYNAMIC.into()),
-            b"PT_INTERP" => Expression::Number(object::elf::PT_INTERP.into()),
-            b"PT_NOTE" => Expression::Number(object::elf::PT_NOTE.into()),
-            b"PT_SHLIB" => Expression::Number(object::elf::PT_SHLIB.into()),
-            b"PT_PHDR" => Expression::Number(object::elf::PT_PHDR.into()),
-            b"PT_TLS" => Expression::Number(object::elf::PT_TLS.into()),
+            b"PT_NULL" => Expression::Number(object::elf::PT_NULL.into_inner().into()),
+            b"PT_LOAD" => Expression::Number(object::elf::PT_LOAD.into_inner().into()),
+            b"PT_DYNAMIC" => Expression::Number(object::elf::PT_DYNAMIC.into_inner().into()),
+            b"PT_INTERP" => Expression::Number(object::elf::PT_INTERP.into_inner().into()),
+            b"PT_NOTE" => Expression::Number(object::elf::PT_NOTE.into_inner().into()),
+            b"PT_SHLIB" => Expression::Number(object::elf::PT_SHLIB.into_inner().into()),
+            b"PT_PHDR" => Expression::Number(object::elf::PT_PHDR.into_inner().into()),
+            b"PT_TLS" => Expression::Number(object::elf::PT_TLS.into_inner().into()),
             _ => {
                 return Err(ContextError::default());
             }
