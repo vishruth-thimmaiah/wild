@@ -1166,7 +1166,7 @@ pub(crate) trait ProgramSegmentDef: Copy + Send + Sync + Display + 'static {
     }
 
     fn from_linker_script(_ptype: u32, _flags: u32) -> Self {
-        todo!()
+        unreachable!("This function is only called from platforms that support linker scripts.");
     }
 }
 
