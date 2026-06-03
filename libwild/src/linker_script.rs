@@ -499,6 +499,15 @@ fn parse_phdr<'input>(input: &mut &'input BStr) -> winnow::Result<Phdr<'input>> 
             b"PT_SHLIB" => Expression::Number(object::elf::PT_SHLIB.into_inner().into()),
             b"PT_PHDR" => Expression::Number(object::elf::PT_PHDR.into_inner().into()),
             b"PT_TLS" => Expression::Number(object::elf::PT_TLS.into_inner().into()),
+            b"PT_GNU_EH_FRAME" => {
+                Expression::Number(object::elf::PT_GNU_EH_FRAME.into_inner().into())
+            }
+            b"PT_GNU_STACK" => Expression::Number(object::elf::PT_GNU_STACK.into_inner().into()),
+            b"PT_GNU_RELRO" => Expression::Number(object::elf::PT_GNU_RELRO.into_inner().into()),
+            b"PT_GNU_PROPERTY" => {
+                Expression::Number(object::elf::PT_GNU_PROPERTY.into_inner().into())
+            }
+            b"PT_GNU_SFRAME" => Expression::Number(object::elf::PT_GNU_SFRAME.into_inner().into()),
             _ => {
                 return Err(ContextError::default());
             }
