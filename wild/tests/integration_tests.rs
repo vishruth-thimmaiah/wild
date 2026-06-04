@@ -911,13 +911,13 @@ impl ProgramHeaderFlags {
     {
         let s = String::deserialize(d)?;
 
-        let mut perms = Self::empty();
+        let mut flags = Self::empty();
 
         for c in s.chars() {
             match c {
-                'R' => perms |= Self::R,
-                'W' => perms |= Self::W,
-                'X' => perms |= Self::X,
+                'R' => flags |= Self::R,
+                'W' => flags |= Self::W,
+                'X' => flags |= Self::X,
                 _ => {
                     return Err(serde::de::Error::custom(
                         "Invalid character in ProgramHeaderFlags",
@@ -926,7 +926,7 @@ impl ProgramHeaderFlags {
             }
         }
 
-        Ok(Some(perms))
+        Ok(Some(flags))
     }
 }
 
