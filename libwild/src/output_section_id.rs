@@ -194,7 +194,7 @@ pub(crate) struct OutputOrderBuilder<'scope, 'data, P: Platform> {
     output_sections: &'scope OutputSections<'data, P>,
     secondary: &'scope OutputSectionMap<Vec<OutputSectionId>>,
     output_kind: OutputKind,
-    is_custom_phdrs: bool,
+    has_custom_phdrs: bool,
 }
 
 impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
@@ -202,7 +202,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
         output_kind: OutputKind,
         output_sections: &'scope OutputSections<'data, P>,
         secondary: &'scope OutputSectionMap<Vec<OutputSectionId>>,
-        is_custom_phdrs: bool,
+        has_custom_phdrs: bool,
     ) -> Self {
         Self {
             events: Vec::new(),
@@ -211,7 +211,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
             active_segment_kinds: vec![None; P::program_segment_defs().len()],
             secondary,
             output_kind,
-            is_custom_phdrs,
+            has_custom_phdrs,
         }
     }
 
@@ -313,7 +313,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
         let mut stop = Vec::new();
         let mut start = Vec::new();
 
-        if self.is_custom_phdrs {
+        if self.has_custom_phdrs {
             return (stop, start);
         }
 
@@ -409,7 +409,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
             self.events.push(OrderEvent::SegmentEnd(segment_id));
         }
 
-        if !self.output_kind.is_partial_object() && !self.is_custom_phdrs {
+        if !self.output_kind.is_partial_object() && !self.has_custom_phdrs {
             for def in P::unconditional_segment_defs() {
                 let segment_id = self.program_segments.add_segment(*def);
                 self.events.push(OrderEvent::SegmentStart(segment_id));
@@ -743,20 +743,45 @@ impl<'data, P: Platform> OutputSections<'data, P> {
     pub(crate) fn output_order(
         &self,
         output_kind: OutputKind,
-    ) -> (OutputOrder<'data>, ProgramSegments<P::ProgramSegmentDef>) {
+        linker_scripts: &[&SequencedLinkerScript<'data, P>],
+    ) -> Result<(OutputOrder<'data>, ProgramSegments<P::ProgramSegmentDef>)> {
         timing_phase!("Compute output order");
 
+        let has_custom_phdrs = linker_scripts
+            .iter()
+            .any(|s| !s.parsed.program_headers.is_empty());
+
         let mut custom = CustomSectionIds::default();
 
         let mut secondary: OutputSectionMap<Vec<OutputSectionId>> = self.new_section_map();
+
+        let mut phdr_map: Option<HashMap<&[u8], Vec<OutputSectionId>>> =
+            has_custom_phdrs.then(HashMap::new);
 
         self.section_infos.for_each(|id, info| {
             if let SectionKind::Secondary(primary) = info.kind {
                 secondary.get_mut(primary).push(id);
                 return;
             }
-            if id.as_usize() < NUM_BUILT_IN_SECTIONS {
-                return;
+
+            if has_custom_phdrs {
+                if let Some(phdr_name) = info.phdr_name {
+                    phdr_map
+                        .as_mut()
+                        .unwrap()
+                        .entry(phdr_name)
+                        .or_default()
+                        .push(id);
+                    return;
+                }
+
+                if id == FILE_HEADER || id == PROGRAM_HEADERS || id == SECTION_HEADERS {
+                    return;
+                }
+            } else {
+                if id.as_usize() < NUM_BUILT_IN_SECTIONS {
+                    return;
+                }
             }
 
             if info.section_attributes.is_executable() {
@@ -780,68 +805,23 @@ impl<'data, P: Platform> OutputSections<'data, P> {
             }
         });
 
-        P::build_output_order_and_program_segments(&custom, output_kind, self, &secondary)
-    }
-
-    pub(crate) fn output_order_from_linker_script(
-        &self,
-        output_kind: OutputKind,
-        linker_script: &[&SequencedLinkerScript<'data, P>],
-    ) -> Result<(OutputOrder<'data>, ProgramSegments<P::ProgramSegmentDef>)> {
-        let mut custom = CustomSectionIds::default();
-
-        let mut secondary: OutputSectionMap<Vec<OutputSectionId>> = self.new_section_map();
-        let mut phdr_map: HashMap<&[u8], Vec<OutputSectionId>> = HashMap::new();
-
-        self.section_infos.for_each(|id, info| {
-            if let SectionKind::Secondary(primary) = info.kind {
-                secondary.get_mut(primary).push(id);
-                return;
-            }
-
-            if let Some(phdr_name) = info.phdr_name {
-                let sections = phdr_map.get_mut(phdr_name);
-                if let Some(sections) = sections {
-                    sections.push(id);
-                } else {
-                    phdr_map.insert(phdr_name, vec![id]);
-                }
-                return;
-            }
-
-            if id == FILE_HEADER || id == PROGRAM_HEADERS || id == SECTION_HEADERS {
-                return;
-            }
-
-            if info.section_attributes.is_executable() {
-                custom.exec.push(id);
-            } else if info.section_attributes.is_tls() {
-                if info.section_attributes.is_no_bits() {
-                    custom.tbss.push(id);
-                } else {
-                    custom.tdata.push(id);
-                }
-            } else if !info.section_attributes.is_writable() {
-                if info.section_attributes.is_alloc() {
-                    custom.ro.push(id);
-                } else {
-                    custom.nonalloc.push(id);
-                }
-            } else if info.section_attributes.is_no_bits() {
-                custom.bss.push(id);
-            } else {
-                custom.data.push(id);
-            }
-        });
-
-        P::build_custom_output_order_and_program_segments(
-            &custom,
-            output_kind,
-            self,
-            &secondary,
-            linker_script,
-            &mut phdr_map,
-        )
+        if has_custom_phdrs {
+            P::build_custom_output_order_and_program_segments(
+                &custom,
+                output_kind,
+                self,
+                &secondary,
+                linker_scripts,
+                &mut phdr_map.unwrap(),
+            )
+        } else {
+            Ok(P::build_output_order_and_program_segments(
+                &custom,
+                output_kind,
+                self,
+                &secondary,
+            ))
+        }
     }
 
     #[must_use]

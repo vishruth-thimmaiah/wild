@@ -708,7 +708,7 @@ pub(crate) trait Platform:
         output_kind: OutputKind,
         output_sections: &OutputSections<'data, Self>,
         secondary: &OutputSectionMap<Vec<OutputSectionId>>,
-        _linker_script: &[&SequencedLinkerScript<'data, Self>],
+        _linker_scripts: &[&SequencedLinkerScript<'data, Self>],
         _phdr_map: &mut hashbrown::HashMap<&[u8], Vec<OutputSectionId>>,
     ) -> Result<(OutputOrder<'data>, ProgramSegments<Self::ProgramSegmentDef>)> {
         Ok(Self::build_output_order_and_program_segments(

@@ -208,14 +208,8 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         .flatten()
         .collect();
 
-    let (output_order, program_segments) = if linker_scripts
-        .iter()
-        .any(|s| !s.parsed.program_headers.is_empty())
-    {
-        output_sections.output_order_from_linker_script(symbol_db.output_kind, &linker_scripts)?
-    } else {
-        output_sections.output_order(symbol_db.output_kind)
-    };
+    let (output_order, program_segments) =
+        output_sections.output_order(symbol_db.output_kind, &linker_scripts)?;
 
     tracing::trace!(
         "Output order:\n{}",
@@ -5280,10 +5274,14 @@ fn test_no_disallowed_overlaps() {
     use crate::output_section_id::OrderEvent;
 
     let mut output_sections = OutputSections::<Elf>::with_base_address(0x1000);
-    let (output_order, program_segments) =
-        output_sections.output_order(crate::output_kind::OutputKind::StaticExecutable(
-            crate::args::RelocationModel::NonRelocatable,
-        ));
+    let (output_order, program_segments) = output_sections
+        .output_order(
+            crate::output_kind::OutputKind::StaticExecutable(
+                crate::args::RelocationModel::NonRelocatable,
+            ),
+            &[],
+        )
+        .unwrap();
     let mut args = crate::args::elf::ElfArgs::default();
     if args.arch == crate::arch::Architecture::Unsupported {
         args.arch = crate::arch::Architecture::X86_64;
@@ -5412,7 +5410,7 @@ fn verify_consistent_allocation_handling<P: Platform>(
     args: &P::Args,
 ) -> Result {
     let output_sections = OutputSections::with_base_address(0);
-    let (output_order, _program_segments) = output_sections.output_order(output_kind);
+    let (output_order, _program_segments) = output_sections.output_order(output_kind, &[])?;
     let mut mem_sizes = output_sections.new_part_map();
     P::allocate_resolution(flags, &mut mem_sizes, output_kind, args);
     let mut memory_offsets = output_sections.new_part_map();

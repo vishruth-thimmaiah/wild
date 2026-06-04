@@ -240,7 +240,7 @@ pub(crate) fn evaluate_const<'data>(expr: &Expression<'data>) -> Result<u64> {
         Expression::LogicalOr(l, r) => Ok(u64::from(
             evaluate_const(l)? != 0 || evaluate_const(r)? != 0,
         )),
-        Expression::LogicalNot(expression) => Ok(u64::from(!evaluate_const(expression)? != 0)),
+        Expression::LogicalNot(expression) => Ok(u64::from(evaluate_const(expression)? != 0)),
         Expression::BitwiseNot(expression) => Ok(!evaluate_const(expression)?),
         Expression::Negate(expression) => Ok(evaluate_const(expression)?.wrapping_neg()),
 

@@ -1897,7 +1897,7 @@ impl platform::Platform for Elf {
         output_kind: OutputKind,
         output_sections: &OutputSections<'data, Self>,
         secondary: &OutputSectionMap<Vec<OutputSectionId>>,
-        linker_script: &[&SequencedLinkerScript<'data, Self>],
+        linker_scripts: &[&SequencedLinkerScript<'data, Self>],
         phdr_map: &mut hashbrown::HashMap<&[u8], Vec<OutputSectionId>>,
     ) -> Result<(OutputOrder<'data>, ProgramSegments<Self::ProgramSegmentDef>)> {
         let mut builder =
@@ -1908,7 +1908,7 @@ impl platform::Platform for Elf {
         let mut insert_r = false;
         let mut first_load = false;
 
-        for script in linker_script {
+        for script in linker_scripts {
             for phdr in &script.parsed.program_headers {
                 let ptype = expression_eval::evaluate_const(&phdr.ptype)?;
                 let flags = phdr
