@@ -57,8 +57,8 @@
 //! ExpectLoadAlignment:{alignment} {alignment} ... Checks that the first N PT_LOAD segments in the
 //! output binary have the specified alignment.
 //!
-//! ExpectProgramHeader:{type} Checks that the output binary contains a program header of the
-//! specified type.
+//! ExpectProgramHeader:{type} [Program Header properties] Checks that the output binary contains a
+//! program header of the specified type. See Program Header properties below.
 //!
 //! NoProgramHeader:{type} Checks that the output binary contains no program headers of the
 //! specified type.
@@ -226,6 +226,23 @@
 //! STB_GLOBAL or STB_WEAK).
 //!
 //! line={num} Parses debug info to check that the symbol is on the line specified.
+//!
+//! ## Program Header properties
+//!
+//! This describes the format of program header properties, which can be supplied to
+//! `ExpectProgramHeader`.
+//!
+//! A comma-separated list of key value pairs. Note, commas should not have spaces after them.
+//!
+//! Example: `//#ExpectProgramHeader:LOAD flags=R,sections=[.rodata,.text]`
+//!
+//! flags=R|W|X: Type: bitflags. Asserts the flags of the program header (PF_R, PF_W, PF_X) This can
+//! also be any combination of the flags together.
+//!
+//! sections=["section-name", ...]: Type: string. Asserts the names of the sections which are
+//! included in the program header's segment. By default, the list of sections given and the
+//! sections in the segment must exactly match, unless the '*' wildcard is included, in which case
+//! the segment may have more sections than what is listed.
 
 mod external_tests;
 
