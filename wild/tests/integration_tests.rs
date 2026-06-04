@@ -3896,10 +3896,10 @@ impl Assertions {
                         continue;
                     }
 
-                    if let Some(expected_flags) = flags {
-                        if header.p_flags(endian).0 != expected_flags.bits() {
-                            continue;
-                        }
+                    if let Some(expected_flags) = flags
+                        && header.p_flags(endian).0 != expected_flags.bits()
+                    {
+                        continue;
                     }
 
                     if !expected_sections.is_empty() {
@@ -3975,7 +3975,7 @@ impl Assertions {
 
             let is_alloc = match section.flags() {
                 object::SectionFlags::Elf { sh_flags, .. } => {
-                    (sh_flags.0 & object::elf::SHF_ALLOC.0 as u64) != 0
+                    (sh_flags.0 & object::elf::SHF_ALLOC.0) != 0
                 }
                 _ => section.flags() != object::SectionFlags::None,
             };
