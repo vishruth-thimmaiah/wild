@@ -7,7 +7,9 @@
 //#DiffIgnore:segment.RISCV_ATTRIBUTES.*
 // GNU ld emits `.riscv.attributes`, but Wild does not
 //#DiffIgnore:riscv_attributes.*
-//#ExpectProgramHeader:LOAD
+//#ExpectProgramHeader:LOAD flags=RX,sections=[.text]
+//#ExpectProgramHeader:LOAD flags=RW,sections=[*]
+//#ExpectProgramHeader:LOAD flags=R,sections=[.rodata,*]
 //#NoProgramHeader:DYNAMIC
 //#NoProgramHeader:PHDR
 //#NoProgramHeader:NOTE

@@ -1,7 +1,7 @@
 PHDRS {
-    text PT_LOAD FLAGS(5);   /* R + X */
+    text PT_LOAD;
     data PT_LOAD FLAGS(6);   /* R + W */
-	rodata PT_LOAD FLAGS(4); /* R */
+    rodata PT_LOAD FLAGS(4); /* R */
 }
 
 SECTIONS {
@@ -19,5 +19,5 @@ SECTIONS {
 
     .rodata : {
         *(.rodata*)
-	} :rodata
+    } :rodata
 }
