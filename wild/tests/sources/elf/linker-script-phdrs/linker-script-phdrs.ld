@@ -21,3 +21,5 @@ SECTIONS {
         *(.rodata*)
     } :rodata
 }
+
+ASSERT(SIZEOF_HEADERS == 64 + (3 * 56), "Wrong size of headers");
