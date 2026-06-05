@@ -3887,7 +3887,7 @@ impl Assertions {
 
         for expected in &self.expected_program_headers {
             let mut found = false;
-            for (i, header) in headers.iter().enumerate() {
+            for (header, actual_sections) in headers.iter().zip(&header_sections) {
                 if header.p_type(endian).0 == expected.ptype as u32 {
                     let flags = expected.assertions.flags;
                     let expected_sections = &expected.assertions.sections;
@@ -3903,7 +3903,6 @@ impl Assertions {
                     }
 
                     if !expected_sections.is_empty() {
-                        let actual_sections = &header_sections[i];
                         let mut has_wildcard = false;
                         let mut sections_found = 0;
 
