@@ -5,6 +5,8 @@ PHDRS {
 }
 
 SECTIONS {
+    . = SIZEOF_HEADERS;
+    start_of_sections = .;
     .text : {
         *(.text*)
     } :text
@@ -22,4 +24,5 @@ SECTIONS {
     } :rodata
 }
 
-ASSERT(SIZEOF_HEADERS == 64 + (3 * 56), "Wrong size of headers");
+ASSERT(start_of_sections == 0x40 + ((3 + is_riscv) * 0x38), "Wrong start of sections");
+ASSERT(SIZEOF_HEADERS == 0x40 + ((3 + is_riscv) * 0x38), "Wrong size of headers");
