@@ -3987,7 +3987,7 @@ impl Assertions {
                 _ => section.flags() != object::SectionFlags::None,
             };
 
-            if !is_alloc && header.p_type(endian).0 != object::elf::PT_RISCV_ATTRIBUTES.0 {
+            if !is_alloc && header.p_type(endian) != object::elf::PT_RISCV_ATTRIBUTES {
                 continue;
             }
 
