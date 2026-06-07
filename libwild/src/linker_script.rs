@@ -895,13 +895,11 @@ fn parse_identifier_or_function<'a>(input: &mut &'a BStr) -> winnow::Result<Expr
             }
             _ => Err(ContextError::default()),
         }
+    } else if ident == b"SIZEOF_HEADERS" {
+        Ok(Expression::SizeofHeaders)
     } else {
-        if ident == b"SIZEOF_HEADERS" {
-            Ok(Expression::SizeofHeaders)
-        } else {
-            // It's a symbol
-            Ok(Expression::Symbol(ident))
-        }
+        // It's a symbol
+        Ok(Expression::Symbol(ident))
     }
 }
 
