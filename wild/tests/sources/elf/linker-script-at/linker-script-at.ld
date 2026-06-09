@@ -2,7 +2,7 @@ ENTRY(main)
 
 SECTIONS {
     .text 0x100000 : AT(0x200000) {
-        *(.text)
+        *(.text .text.*)
     }
     .data 0x200000 : AT(0x300000) {
         *(.data)
