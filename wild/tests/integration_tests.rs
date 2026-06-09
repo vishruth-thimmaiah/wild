@@ -3910,14 +3910,16 @@ impl Assertions {
                     }
 
                     if let Some(expected_paddr) = assertions.paddr
-                        && header.p_paddr(endian) != expected_paddr {
-                            continue;
-                        }
+                        && header.p_paddr(endian) != expected_paddr
+                    {
+                        continue;
+                    }
 
                     if let Some(expected_vaddr) = assertions.vaddr
-                        && header.p_vaddr(endian) != expected_vaddr {
-                            continue;
-                        }
+                        && header.p_vaddr(endian) != expected_vaddr
+                    {
+                        continue;
+                    }
 
                     if !expected_sections.is_empty() {
                         let mut has_wildcard = false;
