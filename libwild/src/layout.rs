@@ -1297,6 +1297,7 @@ pub(crate) struct OutputRecordLayout {
     pub(crate) alignment: Alignment,
     pub(crate) file_offset: usize,
     pub(crate) mem_offset: u64,
+    pub(crate) lma_offset: u64,
 }
 
 pub(crate) struct GraphResources<'data, 'scope, P: Platform> {
@@ -1603,15 +1604,19 @@ fn layout_sections<P: Platform>(
         let info = output_sections.section_infos.get(section_id);
         let mut file_offset = usize::MAX;
         let mut mem_offset = u64::MAX;
+        let mut lma_offset = u64::MAX;
         let mut file_end = 0;
         let mut mem_end = 0;
+        let mut lma_end = 0;
         let mut alignment = info.min_alignment;
 
         for part in layouts {
             file_offset = file_offset.min(part.file_offset);
             mem_offset = mem_offset.min(part.mem_offset);
+            lma_offset = lma_offset.min(part.lma_offset);
             file_end = file_end.max(part.file_offset + part.file_size);
             mem_end = mem_end.max(part.mem_offset + part.mem_size);
+            lma_end = lma_end.max(part.lma_offset + part.mem_size);
             if part.mem_size > 0 {
                 alignment = alignment.max(part.alignment);
             }
@@ -1622,6 +1627,7 @@ fn layout_sections<P: Platform>(
             alignment,
             file_offset,
             mem_offset,
+            lma_offset,
         }
     })
 }
@@ -1710,6 +1716,8 @@ fn compute_segment_layout<'data, P: Platform>(
         file_end: usize,
         mem_start: u64,
         mem_end: u64,
+        lma_start: u64,
+        lma_end: u64,
         alignment: Alignment,
     }
 
@@ -1734,6 +1742,8 @@ fn compute_segment_layout<'data, P: Platform>(
                         file_end: 0,
                         mem_start: 0,
                         mem_end: args.stack_size_override().map_or(0, |size| size.get()),
+                        lma_start: 0,
+                        lma_end: args.stack_size_override().map_or(0, |size| size.get()),
                         alignment: alignment::MIN,
                     });
                 } else {
@@ -1743,6 +1753,8 @@ fn compute_segment_layout<'data, P: Platform>(
                         file_end: 0,
                         mem_start: u64::MAX,
                         mem_end: 0,
+                        lma_start: u64::MAX,
+                        lma_end: 0,
                         alignment: alignment::MIN,
                     });
                 }
@@ -1795,12 +1807,16 @@ fn compute_segment_layout<'data, P: Platform>(
 
                         rec.file_start = rec.file_start.min(section_layout.file_offset);
                         rec.mem_start = rec.mem_start.min(section_layout.mem_offset);
+                        rec.lma_start = rec.lma_start.min(section_layout.lma_offset);
                         rec.file_end = rec
                             .file_end
                             .max(section_layout.file_offset + section_layout.file_size);
                         rec.mem_end = rec
                             .mem_end
                             .max(section_layout.mem_offset + section_layout.mem_size);
+                        rec.lma_end = rec
+                            .lma_end
+                            .max(section_layout.lma_offset + section_layout.mem_size);
                         rec.alignment = rec.alignment.max(section_layout.alignment);
                     }
                 }
@@ -1826,6 +1842,7 @@ fn compute_segment_layout<'data, P: Platform>(
                 alignment: r.alignment,
                 file_offset: r.file_start,
                 mem_offset: r.mem_start,
+                lma_offset: r.lma_start,
             };
 
             if program_segments.is_tls_segment(id) {
@@ -4849,6 +4866,7 @@ fn layout_section_parts<'data, P: Platform>(
 
     let mut file_offset = 0;
     let mut mem_offset = expression_eval(&output_sections.base_address)?;
+    let mut lma_offset = mem_offset;
     let mut nonalloc_mem_offsets: OutputSectionMap<u64> =
         OutputSectionMap::with_size(output_sections.num_sections());
     let mut reloc_alloc_mem_offsets: OutputSectionMap<u64> =
@@ -4872,6 +4890,7 @@ fn layout_section_parts<'data, P: Platform>(
                     if let Some(expr) = pending_location.take() {
                         // The OrderEvent::SetLocation is ELF-specific only.
                         mem_offset = expression_eval(&expr)?;
+                        lma_offset = mem_offset;
                         file_offset =
                             segment_alignment.align_modulo(mem_offset, file_offset as u64) as usize;
                     } else {
@@ -4881,6 +4900,12 @@ fn layout_section_parts<'data, P: Platform>(
                             segment_alignment,
                             &mut file_offset,
                             &mut mem_offset,
+                        );
+                        P::align_load_segment_start(
+                            segment_def,
+                            segment_alignment,
+                            &mut file_offset,
+                            &mut lma_offset,
                         );
                     }
                 }
@@ -4896,6 +4921,11 @@ fn layout_section_parts<'data, P: Platform>(
                 let max_alignment = sizes.max_alignment(part_id_range.clone(), output_sections);
                 if let Some(ref expr) = section_info.location {
                     mem_offset = expression_eval(expr)?;
+                }
+                if let Some(ref expr) = section_info.load_location {
+                    lma_offset = expression_eval(expr)?;
+                } else {
+                    lma_offset = mem_offset;
                 }
 
                 records_out[part_id_range.clone()]
@@ -4939,11 +4969,13 @@ fn layout_section_parts<'data, P: Platform>(
                                     alignment,
                                     file_offset,
                                     mem_offset: part_mem_offset,
+                                    lma_offset: part_mem_offset,
                                 };
 
                                 file_offset += file_size;
                             } else {
                                 mem_offset = alignment.align_up(mem_offset);
+                                lma_offset = alignment.align_up(lma_offset);
 
                                 let file_size = if output_sections.has_data_in_file(merge_target) {
                                     mem_size as usize
@@ -4957,10 +4989,12 @@ fn layout_section_parts<'data, P: Platform>(
                                     alignment,
                                     file_offset,
                                     mem_offset,
+                                    lma_offset,
                                 };
 
                                 file_offset += file_size;
                                 mem_offset += mem_size;
+                                lma_offset += mem_size;
                             }
                         } else {
                             let section_id = part_id.output_section_id();
@@ -4975,6 +5009,7 @@ fn layout_section_parts<'data, P: Platform>(
                                 alignment,
                                 file_offset,
                                 mem_offset,
+                                lma_offset: mem_offset,
                             };
                             file_offset += mem_size as usize;
                         }

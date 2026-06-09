@@ -503,6 +503,7 @@ pub(crate) struct SectionOutputInfo<'data, P: Platform> {
     pub(crate) section_attributes: P::SectionAttributes,
     pub(crate) min_alignment: Alignment,
     pub(crate) location: Option<linker_script::Expression<'data>>,
+    pub(crate) load_location: Option<linker_script::Expression<'data>>,
     pub(crate) secondary_order: Option<SecondaryOrder>,
     pub(crate) phdr_name: Option<&'data [u8]>,
 }
@@ -642,7 +643,8 @@ impl<'data, P: Platform> OutputSections<'data, P> {
             let location = args
                 .start_address_for_section(custom.name)
                 .map(linker_script::Expression::Number);
-            let section_id = self.add_named_section(custom.name, custom.alignment, location, None);
+            let section_id =
+                self.add_named_section(custom.name, custom.alignment, location, None, None);
 
             section_part_ids[custom.index.0] = section_id.part_id_with_alignment(custom.alignment);
         }
@@ -669,6 +671,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         name: SectionName<'data>,
         min_alignment: Alignment,
         location: Option<linker_script::Expression<'data>>,
+        load_location: Option<linker_script::Expression<'data>>,
         phdr_name: Option<&'data [u8]>,
     ) -> OutputSectionId {
         *self.custom_by_name.entry(name).or_insert_with(|| {
@@ -679,6 +682,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
                 section_attributes: Default::default(),
                 min_alignment,
                 location,
+                load_location,
                 secondary_order: None,
                 phdr_name,
             })
@@ -691,12 +695,15 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         min_alignment: Alignment,
         secondary_order: Option<SecondaryOrder>,
     ) -> OutputSectionId {
-        let section_attributes = self.section_infos.get(primary_id).section_attributes;
+        let primary_info = self.section_infos.get(primary_id);
+        let section_attributes = primary_info.section_attributes;
+        let load_location = primary_info.load_location.clone();
         self.section_infos.add_new(SectionOutputInfo {
             kind: SectionKind::Secondary(primary_id),
             section_attributes,
             min_alignment,
             location: None,
+            load_location,
             secondary_order,
             phdr_name: None,
         })
@@ -947,6 +954,7 @@ impl<'data, P: Platform> OutputSections<'data, P> {
             output_sections.add_named_section(
                 SectionName(name.as_bytes()),
                 crate::alignment::MIN,
+                None,
                 None,
                 None,
             )
