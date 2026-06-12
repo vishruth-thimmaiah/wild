@@ -1,37 +1,39 @@
 MEMORY {
-    region1 : ORIGIN = 0x10000000, LENGTH = 0x100000
-    region2 : ORIGIN = 0x20000000, LENGTH = 0x100000
+    RAM : ORIGIN = 0x10000000, LENGTH = 0x100000
+    ROM : ORIGIN = 0x20000000, LENGTH = 0x100000
 }
 
 SECTIONS {
     .data.ram1 : {
         KEEP(*(.data.ram1))
-    } > region1
+    } > RAM
 
     .data.ram2 : {
         KEEP(*(.data.ram2))
-    } > region1
+    } > RAM
 
     .data.rom : {
         KEEP(*(.data.rom))
-    } > region2
+    } > ROM
 
-	.data.ram3 : {
-		KEEP(*(.data.ram3))
-	} > region1
+    .data.ram3 0x10000010 : {
+        KEEP(*(.data.ram3))
+    } > RAM
 
-	.note.gnu.property : {
-		*(.note.gnu.property)
-	} > region2
+    .note.gnu.property : {
+        *(.note.gnu.property)
+    } > ROM
 
-	.text : {
-		*(.text)
-	} > region2
-
-	.relro_padding : {
-		*(.relro_padding)
-	} > region2
+    .text : {
+        *(.text)
+    } > ROM
 }
 
 ASSERT(ORIGIN(RAM) + LENGTH(RAM) == 0x10100000, "RAM region overflowed")
 ASSERT(ORIGIN(ROM) + LENGTH(ROM) == 0x20100000, "ROM region overflowed")
+
+ASSERT(ADDR(.data.ram1) == 0x10000000, "data.ram1 address is wrong")
+ASSERT(ADDR(.data.ram2) == 0x10000004, "data.ram2 address is wrong")
+ASSERT(ADDR(.data.ram3) == 0x10000010, "data.ram3 address is wrong")
+/* Some linkers don't emit .note.gnu.property, so .data.rom may not start at 0x20000000 */
+ASSERT(ADDR(.data.rom) >= 0x20000000, "data.rom address is wrong")

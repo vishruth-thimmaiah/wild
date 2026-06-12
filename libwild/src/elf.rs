@@ -967,6 +967,7 @@ impl platform::Platform for Elf {
                 load_location: None,
                 secondary_order: None,
                 phdr_name: None,
+                region_name: None,
             })
             .collect()
     }
