@@ -257,14 +257,21 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
     let mut memory_regions = HashMap::new();
     for s in &linker_scripts {
         for region in &s.parsed.memory_regions {
-            memory_regions.insert(
-                region.name,
-                MemoryRegion {
-                    origin: evaluate_const(&region.origin)?,
-                    length: evaluate_const(&region.length)?,
-                    used: 0,
-                },
-            );
+            memory_regions
+                .try_insert(
+                    region.name,
+                    MemoryRegion {
+                        origin: evaluate_const(&region.origin)?,
+                        length: evaluate_const(&region.length)?,
+                        used: 0,
+                    },
+                )
+                .map_err(|_| {
+                    error!(
+                        "region '{}' already defined",
+                        String::from_utf8_lossy(region.name)
+                    )
+                })?;
         }
     }
 
@@ -5156,9 +5163,8 @@ fn layout_section_parts<'data, P: Platform>(
                     .map(|region_name| {
                         memory_regions.get(region_name).with_context(|| {
                             format!(
-                                "Memory region '{}' not found for section '{}'",
+                                "Memory region '{}' not declared",
                                 String::from_utf8_lossy(region_name),
-                                output_sections.display_name(section_id)
                             )
                         })
                     })
@@ -5172,7 +5178,7 @@ fn layout_section_parts<'data, P: Platform>(
                         && (offset < mem_offset || offset > mem_offset + region.length)
                     {
                         bail!(
-                            "address 0x{offset:x} of  section '{}' is not within region `{}'",
+                            "address 0x{offset:x} of section '{}' is not within region `{}'",
                             output_sections.display_name(section_id),
                             String::from_utf8_lossy(section_info.region_name.unwrap()),
                         );

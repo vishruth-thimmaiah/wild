@@ -35,6 +35,7 @@ use crate::program_segments::ProgramSegments;
 use crate::timing_phase;
 use core::slice;
 use hashbrown::HashMap;
+use itertools::multizip;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::ops::Range;
@@ -340,44 +341,46 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
         }
 
         let section_region = section_info.region_name;
-        P::program_segment_defs()
-            .iter()
-            .enumerate()
-            .for_each(|(index, segment_def)| {
-                let should_be_active = self
-                    .output_sections
-                    .should_include_in_segment(section_id, *segment_def);
+        multizip((
+            P::program_segment_defs(),
+            self.active_segment_kinds.iter_mut(),
+            self.active_segment_regions.iter_mut(),
+        ))
+        .for_each(|(segment_def, active_id, active_region)| {
+            let should_be_active = self
+                .output_sections
+                .should_include_in_segment(section_id, *segment_def);
 
-                match (self.active_segment_kinds[index], should_be_active) {
-                    // Remain inactive
-                    (None, false) => {}
+            match (active_id.as_ref(), should_be_active) {
+                // Remain inactive
+                (None, false) => {}
 
-                    // Remain active
-                    (Some(segment_id), true) => {
-                        if self.active_segment_regions[index] != section_region {
-                            stop.push(segment_id);
-                            let new_segment_id = self.program_segments.add_segment(*segment_def);
-                            start.push(new_segment_id);
-                            self.active_segment_kinds[index] = Some(new_segment_id);
-                            self.active_segment_regions[index] = section_region;
-                        }
-                    }
-                    // Start segment
-                    (None, true) => {
-                        let segment_id = self.program_segments.add_segment(*segment_def);
-                        start.push(segment_id);
-                        self.active_segment_kinds[index] = Some(segment_id);
-                        self.active_segment_regions[index] = section_region;
-                    }
-
-                    // End segment
-                    (Some(segment_id), false) => {
-                        stop.push(segment_id);
-                        self.active_segment_kinds[index] = None;
-                        self.active_segment_regions[index] = None;
+                // Remain active
+                (Some(segment_id), true) => {
+                    if *active_region != section_region {
+                        stop.push(*segment_id);
+                        let new_segment_id = self.program_segments.add_segment(*segment_def);
+                        start.push(new_segment_id);
+                        *active_id = Some(new_segment_id);
+                        *active_region = section_region;
                     }
                 }
-            });
+                // Start segment
+                (None, true) => {
+                    let segment_id = self.program_segments.add_segment(*segment_def);
+                    start.push(segment_id);
+                    *active_id = Some(segment_id);
+                    *active_region = section_region;
+                }
+
+                // End segment
+                (Some(segment_id), false) => {
+                    stop.push(*segment_id);
+                    *active_id = None;
+                    *active_region = None;
+                }
+            }
+        });
 
         (stop, start)
     }
