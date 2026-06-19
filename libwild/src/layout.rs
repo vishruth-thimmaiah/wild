@@ -279,7 +279,7 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         unreachable!();
     };
 
-    let (mut section_part_layouts, mut section_layouts) = layout_section_parts::<A::Platform>(
+    let (mut section_part_layouts, mut section_layouts) = layout_section::<A::Platform>(
         &section_part_sizes,
         &output_sections,
         &program_segments,
@@ -305,20 +305,25 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         )?;
     }
 
-    if let Some((record, last_part_id)) = section_part_layouts
-        .parts
+    if let Some((last_section_id, _)) = section_layouts
         .iter()
-        .enumerate()
-        .map(|(index, rec)| (rec, PartId::from_usize(index)))
-        .max_by_key(|(record, _)| record.file_offset + record.file_size)
+        .max_by_key(|(_, record)| record.file_end())
     {
-        let extra_file_size = A::Platform::last_part_size_to_extend(record, last_part_id)?;
+        let last_part_id = PartId::from_usize(last_section_id.part_id_range().end.as_usize() - 1);
+        let extra_file_size = A::Platform::last_part_size_to_extend(
+            section_part_layouts.get(last_part_id),
+            last_part_id,
+        )?;
         if extra_file_size > 0 {
             section_part_sizes.increment(last_part_id, extra_file_size as u64);
 
-            let rec = section_part_layouts.get_mut(last_part_id);
-            rec.file_size += extra_file_size;
-            rec.mem_size += extra_file_size as u64;
+            let part_layout = section_part_layouts.get_mut(last_part_id);
+            part_layout.file_size += extra_file_size;
+            part_layout.mem_size += extra_file_size as u64;
+
+            let section_layout = section_layouts.get_mut(last_section_id);
+            section_layout.file_size += extra_file_size;
+            section_layout.mem_size += extra_file_size as u64;
         }
     }
 
@@ -5054,7 +5059,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
                 .collect(),
         );
 
-        (*section_part_layouts, *section_layouts) = layout_section_parts::<A::Platform>(
+        (*section_part_layouts, *section_layouts) = layout_section::<A::Platform>(
             section_part_sizes,
             output_sections,
             program_segments,
@@ -5067,7 +5072,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
     Ok(())
 }
 
-fn layout_section_parts<'data, P: Platform>(
+fn layout_section<'data, P: Platform>(
     sizes: &OutputSectionPartMap<u64>,
     output_sections: &OutputSections<'data, P>,
     program_segments: &ProgramSegments<P::ProgramSegmentDef>,
@@ -5626,7 +5631,7 @@ fn test_no_disallowed_overlaps() {
     let symbol_db =
         crate::symbol_db::SymbolDb::<Elf>::new(&args, output_kind, &auxiliary, &herd).unwrap();
 
-    let (_, section_layouts) = layout_section_parts::<Elf>(
+    let (_, section_layouts) = layout_section::<Elf>(
         &section_part_sizes,
         &output_sections,
         &program_segments,
