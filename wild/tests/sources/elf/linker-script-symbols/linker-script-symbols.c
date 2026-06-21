@@ -1,6 +1,8 @@
 //#Config:default
 //#AugmentLinkerScript:script.ld
 //#Object:runtime.c
+//#ExpectSym:value3 address=0x123
+//#ExpectSym:value4 address=0x123
 
 //#Config:lto:default
 //#RequiresLinkerPlugin:true
@@ -17,6 +19,8 @@ int value2 = 200;
 
 extern int value1a;
 extern int value2a;
+extern int value3;
+extern int value4;
 
 int foo(void) { return 9; }
 int foo_alias(void);
@@ -34,6 +38,10 @@ void _start(void) {
 
   if (value2 != 200) {
     exit_syscall(11);
+  }
+
+  if ((unsigned long)&value3 != (unsigned long)&value4) {
+    exit_syscall(12);
   }
 
   exit_syscall(42);

@@ -280,6 +280,10 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         unreachable!();
     };
 
+    let mut symbol_resolutions = SymbolResolutions {
+        resolutions: Vec::with_capacity(symbol_db.num_symbols()),
+    };
+
     let (mut section_part_layouts, mut section_layouts) = layout_section::<A::Platform>(
         &section_part_sizes,
         &output_sections,
@@ -288,6 +292,7 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         &symbol_db,
         &mut memory_regions,
         sizeof_headers,
+        &mut symbol_resolutions.resolutions,
     )?;
 
     if symbol_db.args.should_relax() && A::supports_size_reduction_relaxations() {
@@ -303,6 +308,7 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
             &per_symbol_flags,
             &mut memory_regions,
             sizeof_headers,
+            &mut symbol_resolutions.resolutions,
         )?;
     }
 
@@ -354,10 +360,6 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         &starting_mem_offsets_by_group,
         &merged_strings,
     );
-
-    let mut symbol_resolutions = SymbolResolutions {
-        resolutions: Vec::with_capacity(symbol_db.num_symbols()),
-    };
 
     let mut res_writer = sharded_vec_writer::VecWriter::new(&mut symbol_resolutions.resolutions);
 
@@ -419,7 +421,7 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>>(
         &symbol_db,
         &section_layouts,
         &output_sections,
-        &symbol_resolutions.resolutions,
+        &mut symbol_resolutions.resolutions,
         sizeof_headers,
         &memory_regions,
     )?;
@@ -485,7 +487,7 @@ struct FinaliseSizesResources<'data, 'scope, P: Platform> {
 /// Update resolutions for symbol redirects.
 fn update_redirect_resolutions<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
-    resolutions: &mut [Option<Resolution<P>>],
+    resolutions: &mut [ResolutionState<P>],
     output_sections: &OutputSections<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     sizeof_headers: u64,
@@ -501,13 +503,14 @@ fn update_redirect_resolutions<'data, P: Platform>(
                 for def_info in &prelude.symbol_definitions {
                     update_defsym_symbol_resolution(
                         symbol_id,
-                        def_info,
+                        def_info.1,
                         symbol_db,
                         resolutions,
                         output_sections,
                         section_layouts,
                         memory_regions,
                         sizeof_headers,
+                        &prelude.symbol_definitions,
                     )?;
                     symbol_id = symbol_id.next();
                 }
@@ -517,13 +520,14 @@ fn update_redirect_resolutions<'data, P: Platform>(
                     for def_info in &script.parsed.symbol_defs {
                         update_defsym_symbol_resolution(
                             symbol_id,
-                            def_info,
+                            def_info.1,
                             symbol_db,
                             resolutions,
                             output_sections,
                             section_layouts,
                             memory_regions,
                             sizeof_headers,
+                            &script.parsed.symbol_defs,
                         )?;
                         symbol_id = symbol_id.next();
                     }
@@ -542,12 +546,14 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
     symbol_id: SymbolId,
     def_info: &InternalSymDefInfo<'data, P>,
     symbol_db: &SymbolDb<'data, P>,
-    resolutions: &mut [Option<Resolution<P>>],
+    resolutions: &mut [ResolutionState<P>],
     output_sections: &OutputSections<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     memory_regions: &HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
+    symbol_definitions: &indexmap::IndexMap<&'data [u8], InternalSymDefInfo<'data, P>>,
 ) -> Result {
+    let symbol_id = symbol_db.definition(symbol_id);
     if let SymbolPlacement::Redirect(redirect) = &def_info.placement {
         let value = crate::expression_eval::evaluate_expression(
             &redirect.expression,
@@ -557,7 +563,8 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
             memory_regions,
             symbol_db,
             sizeof_headers,
-            &|name| {
+            resolutions,
+            &|name, resolutions| {
                 let Some(target_symbol_id) =
                     symbol_db.get_unversioned(&UnversionedSymbolName::prehashed(name))
                 else {
@@ -566,19 +573,52 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
 
                 let canonical_target_id = symbol_db.definition(target_symbol_id);
 
-                let resolution = resolutions[canonical_target_id.as_usize()]
-                    .as_ref()
-                    .ok_or_else(|| redirect.missing_resolution(name))?;
+                let resolution = &mut resolutions[canonical_target_id.as_usize()];
+                match resolution {
+                    ResolutionState::Unresolved => {
+                        *resolution = ResolutionState::Pending;
+                        let def = symbol_definitions
+                            .get(name)
+                            .ok_or(redirect.missing_target(name))?;
+                        update_defsym_symbol_resolution(
+                            canonical_target_id,
+                            def,
+                            symbol_db,
+                            resolutions,
+                            output_sections,
+                            section_layouts,
+                            memory_regions,
+                            sizeof_headers,
+                            symbol_definitions,
+                        )?
+                    }
+                    ResolutionState::Pending => return Err(redirect.missing_target(name)),
+                    ResolutionState::Resolved(_) => {}
+                };
+
+                let resolution = match resolutions[canonical_target_id.as_usize()] {
+                    ResolutionState::Resolved(resolution) => resolution,
+                    _ => Err(redirect.missing_resolution(name))?,
+                };
 
                 Ok(resolution.raw_value)
             },
         )?;
 
-        let Some(resolution) = &mut resolutions[symbol_id.as_usize()] else {
-            return Ok(());
-        };
-
-        resolution.raw_value = value;
+        let resolution = &mut resolutions[symbol_id.as_usize()];
+        match resolution {
+            ResolutionState::Resolved(r) => {
+                r.raw_value = value;
+            }
+            ResolutionState::Pending | ResolutionState::Unresolved => {
+                *resolution = ResolutionState::Resolved(Resolution {
+                    raw_value: value,
+                    dynamic_symbol_index: None,
+                    flags: ValueFlags::empty(),
+                    format_specific: Default::default(),
+                });
+            }
+        }
     }
 
     Ok(())
@@ -588,7 +628,7 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
 fn update_dynamic_symbol_resolutions<'data, P: Platform>(
     resources: &FinaliseLayoutResources<'_, 'data, P>,
     layouts: &[GroupLayout<'data, P>],
-    resolutions: &mut [Option<Resolution<P>>],
+    resolutions: &mut [ResolutionState<P>],
 ) {
     timing_phase!("Update dynamic symbol resolutions");
 
@@ -599,7 +639,7 @@ fn update_dynamic_symbol_resolutions<'data, P: Platform>(
     for (index, sym) in resources.dynamic_symbol_definitions.iter().enumerate() {
         let dynamic_symbol_index = NonZeroU32::try_from(epilogue.dynsym_start_index + index as u32)
             .expect("Dynamic symbol definitions should start > 0");
-        if let Some(res) = &mut resolutions[sym.symbol_id.as_usize()] {
+        if let ResolutionState::Resolved(res) = &mut resolutions[sym.symbol_id.as_usize()] {
             res.dynamic_symbol_index = Some(dynamic_symbol_index);
         }
     }
@@ -764,12 +804,15 @@ pub(crate) struct SegmentLayout {
 
 #[derive(Debug)]
 pub(crate) struct SymbolResolutions<P: Platform> {
-    resolutions: Vec<Option<Resolution<P>>>,
+    resolutions: Vec<ResolutionState<P>>,
 }
 
 impl<P: Platform> SymbolResolutions<P> {
     pub(crate) fn get(&self, symbol_id: SymbolId) -> Option<&Resolution<P>> {
-        self.resolutions[symbol_id.as_usize()].as_ref()
+        match self.resolutions[symbol_id.as_usize()] {
+            ResolutionState::Resolved(ref resolution) => Some(resolution),
+            _ => None,
+        }
     }
 }
 
@@ -794,6 +837,13 @@ pub(crate) struct Resolution<P: Platform> {
     pub(crate) flags: ValueFlags,
 
     pub(crate) format_specific: P::ResolutionExt,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ResolutionState<P: Platform> {
+    Unresolved,
+    Pending,
+    Resolved(Resolution<P>),
 }
 
 /// Address information for a section.
@@ -1602,11 +1652,11 @@ impl<'data, P: Platform> Layout<'data, P> {
     pub(crate) fn resolutions_in_range(
         &self,
         range: SymbolIdRange,
-    ) -> impl Iterator<Item = (SymbolId, Option<&Resolution<P>>)> {
+    ) -> impl Iterator<Item = (SymbolId, ResolutionState<P>)> {
         self.symbol_resolutions.resolutions[range.as_usize()]
             .iter()
             .enumerate()
-            .map(move |(i, res)| (range.offset_to_id(i), res.as_ref()))
+            .map(move |(i, res)| (range.offset_to_id(i), *res))
     }
 
     pub(crate) fn entry_symbol_address(&self) -> Result<u64> {
@@ -1830,7 +1880,7 @@ fn compute_start_offsets_by_group<P: Platform>(
 fn compute_symbols_and_layouts<'data, P: Platform>(
     group_states: Vec<GroupState<'data, P>>,
     starting_mem_offsets_by_group: Vec<OutputSectionPartMap<u64>>,
-    per_group_res_writers: &mut [sharded_vec_writer::Shard<Option<Resolution<P>>>],
+    per_group_res_writers: &mut [sharded_vec_writer::Shard<ResolutionState<P>>],
     resources: &FinaliseLayoutResources<'_, 'data, P>,
 ) -> Result<Vec<GroupLayout<'data, P>>> {
     timing_phase!("Assign symbol addresses");
@@ -2461,7 +2511,7 @@ impl<'data, P: Platform> GroupState<'data, P> {
     fn finalise_layout(
         self,
         memory_offsets: &mut OutputSectionPartMap<u64>,
-        resolutions_out: &mut sharded_vec_writer::Shard<Option<Resolution<P>>>,
+        resolutions_out: &mut sharded_vec_writer::Shard<ResolutionState<P>>,
         resources: &FinaliseLayoutResources<'_, 'data, P>,
     ) -> Result<GroupLayout<'data, P>> {
         let format_specific = P::finalise_group_layout(memory_offsets);
@@ -2776,7 +2826,7 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
     fn finalise_layout(
         self,
         memory_offsets: &mut OutputSectionPartMap<u64>,
-        resolutions_out: &mut sharded_vec_writer::Shard<Option<Resolution<P>>>,
+        resolutions_out: &mut sharded_vec_writer::Shard<ResolutionState<P>>,
         resources: &FinaliseLayoutResources<'_, 'data, P>,
     ) -> Result<FileLayout<'data, P>> {
         let resolutions_out = &mut ResolutionWriter { resolutions_out };
@@ -2817,7 +2867,7 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
             }
             Self::NotLoaded(s) => {
                 for _ in 0..s.symbol_id_range.len() {
-                    resolutions_out.write(None)?;
+                    resolutions_out.write(ResolutionState::Unresolved)?;
                 }
                 FileLayout::NotLoaded
             }
@@ -3631,9 +3681,9 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
     resources: &FinaliseLayoutResources<'_, 'data, P>,
     def_info: &InternalSymDefInfo<P>,
     symbol_id: SymbolId,
-) -> Option<Resolution<P>> {
+) -> ResolutionState<P> {
     if !resources.symbol_db.is_canonical(symbol_id) {
-        return None;
+        return ResolutionState::Unresolved;
     }
 
     if !resources
@@ -3641,7 +3691,7 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
         .flags_for_symbol(symbol_id)
         .has_resolution()
     {
-        return None;
+        return ResolutionState::Unresolved;
     }
 
     let raw_value = match def_info.placement {
@@ -3676,17 +3726,21 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
             // For redirects to other symbols, we defer resolution until later when all symbols have
             // been resolved. This is handled by update_redirect_resolutions() which is called after
             // layout is complete.
-            0
+            return ResolutionState::Unresolved;
         }
-        SymbolPlacement::LoadBaseAddress => resources
+        SymbolPlacement::LoadBaseAddress => match resources
             .segment_layouts
             .segments
             .iter()
             .find(|seg| resources.program_segments.segment_def(seg.id).is_loadable())
-            .map(|seg| seg.sizes.mem_offset)?,
+            .map(|seg| seg.sizes.mem_offset)
+        {
+            Some(offset) => offset,
+            None => return ResolutionState::Unresolved,
+        },
     };
 
-    Some(P::create_resolution(
+    ResolutionState::Resolved(P::create_resolution(
         resources
             .symbol_db
             .flags_for_symbol(resources.per_symbol_flags, symbol_id),
@@ -4337,12 +4391,12 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
         local_symbol_index: object::SymbolIndex,
         section_resolutions: &[SectionResolution],
         memory_offsets: &mut OutputSectionPartMap<u64>,
-    ) -> Result<Option<Resolution<P>>> {
+    ) -> Result<ResolutionState<P>> {
         let symbol_id_range = self.symbol_id_range();
         let symbol_id = symbol_id_range.input_to_id(local_symbol_index);
 
         if !flags.has_resolution() || !resources.symbol_db.is_canonical(symbol_id) {
-            return Ok(None);
+            return Ok(ResolutionState::Unresolved);
         }
 
         let raw_value = if let Some(section_index) = self
@@ -4374,7 +4428,7 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
                 // Don't error for mapping symbols. They cannot have relocations refer to
                 // them, so we don't need to produce a resolution.
                 if resources.symbol_db.is_mapping_symbol(symbol_id) {
-                    return Ok(None);
+                    return Ok(ResolutionState::Unresolved);
                 }
                 bail!(
                     "Symbol is in a section that we didn't load. \
@@ -4403,7 +4457,7 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
             );
         }
 
-        Ok(Some(P::create_resolution(
+        Ok(ResolutionState::Resolved(P::create_resolution(
             flags,
             raw_value,
             dynamic_symbol_index,
@@ -4593,11 +4647,11 @@ fn can_export_symbol<'data, P: Platform>(
 }
 
 pub(crate) struct ResolutionWriter<'writer, 'out, P: Platform> {
-    resolutions_out: &'writer mut sharded_vec_writer::Shard<'out, Option<Resolution<P>>>,
+    resolutions_out: &'writer mut sharded_vec_writer::Shard<'out, ResolutionState<P>>,
 }
 
 impl<P: Platform> ResolutionWriter<'_, '_, P> {
-    pub(crate) fn write(&mut self, res: Option<Resolution<P>>) -> Result {
+    pub(crate) fn write(&mut self, res: ResolutionState<P>) -> Result {
         self.resolutions_out.try_push(res)?;
         Ok(())
     }
@@ -4623,14 +4677,14 @@ impl<'data> StubLibraryLayoutState<'data> {
                 .symbol_db
                 .flags_for_symbol(resources.per_symbol_flags, symbol_id);
             if flags.has_resolution() && resources.symbol_db.is_canonical(symbol_id) {
-                resolutions_out.write(Some(P::create_resolution(
+                resolutions_out.write(ResolutionState::Resolved(P::create_resolution(
                     flags,
                     0,
                     None,
                     memory_offsets,
                 )))?;
             } else {
-                resolutions_out.write(None)?;
+                resolutions_out.write(ResolutionState::Unresolved)?;
             }
         }
 
@@ -5011,6 +5065,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
     per_symbol_flags: &PerSymbolFlags,
     memory_regions: &mut HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
+    resolutions: &mut [ResolutionState<A::Platform>],
 ) -> Result {
     timing_phase!("Iterative relaxation");
 
@@ -5068,6 +5123,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
             symbol_db,
             memory_regions,
             sizeof_headers,
+            resolutions,
         )?;
     }
     Ok(())
@@ -5081,6 +5137,7 @@ fn layout_section<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
     memory_regions: &mut HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
+    resolutions: &mut [ResolutionState<P>],
 ) -> Result<(
     OutputSectionPartMap<OutputRecordLayout>,
     OutputSectionMap<OutputRecordLayout>,
@@ -5096,7 +5153,7 @@ fn layout_section<'data, P: Platform>(
 
     let mut section_layouts = OutputSectionMap::with_size(output_sections.num_sections());
 
-    let expression_eval =
+    let mut expression_eval =
         |expr: &Expression<'data>,
          memory_regions: &HashMap<&[u8], MemoryRegion>,
          section_layouts: &OutputSectionMap<OutputRecordLayout>| {
@@ -5108,7 +5165,8 @@ fn layout_section<'data, P: Platform>(
                 memory_regions,
                 symbol_db,
                 sizeof_headers,
-                &|_| {
+                resolutions,
+                &|_, _| {
                     bail!("Symbols with the set location operation are not yet supported.");
                 },
             )
@@ -5494,7 +5552,7 @@ impl<'data, P: Platform> LinkerScriptLayoutState<'data, P> {
             input: input.input,
             symbol_id_range: input.symbol_id_range,
             internal_symbols: InternalSymbols {
-                symbol_definitions: input.symbol_definitions,
+                symbol_definitions: input.symbol_definitions.values().cloned().collect(),
                 start_symbol_id: input.symbol_id_range.start(),
             },
         }
@@ -5640,6 +5698,7 @@ fn test_no_disallowed_overlaps() {
         &symbol_db,
         &mut HashMap::new(),
         0,
+        &mut [],
     )
     .unwrap();
 

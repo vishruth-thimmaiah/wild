@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::grouping::Group;
 use crate::layout;
 use crate::layout::OutputRecordLayout;
-use crate::layout::Resolution;
+use crate::layout::ResolutionState;
 use crate::linker_script::Expression;
 use crate::output_section_id::OutputSections;
 use crate::output_section_id::SectionName;
@@ -34,7 +34,7 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     output_sections: &OutputSections<'data, P>,
-    resolutions: &[Option<Resolution<P>>],
+    resolutions: &mut [ResolutionState<P>],
     sizeof_headers: u64,
     memory_regions: &HashMap<&[u8], layout::MemoryRegion>,
 ) -> Result {
@@ -54,7 +54,8 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
                     memory_regions,
                     symbol_db,
                     sizeof_headers,
-                    &|name| {
+                    resolutions,
+                    &|name, resolutions| {
                         let Some(target_symbol_id) =
                             symbol_db.get_unversioned(&UnversionedSymbolName::prehashed(name))
                         else {
@@ -65,9 +66,10 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
                         };
 
                         let canonical_target_id = symbol_db.definition(target_symbol_id);
-                        Ok(resolutions[canonical_target_id.as_usize()]
-                            .as_ref()
-                            .map_or(0, |r| r.raw_value))
+                        match resolutions[canonical_target_id.as_usize()] {
+                            ResolutionState::Resolved(r) => Ok(r.raw_value),
+                            _ => Ok(0),
+                        }
                     },
                 )
                 .with_context(|| format!("{}:{}: Failed to evaluate ASSERT", parsed.input, line))?;
@@ -90,7 +92,8 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
     memory_regions: &HashMap<&[u8], layout::MemoryRegion>,
     symbol_db: &SymbolDb<'data, P>,
     sizeof_headers: u64,
-    symbol_resolution_callback: &dyn Fn(&[u8]) -> Result<u64>,
+    resolutions: &mut [ResolutionState<P>],
+    symbol_resolution_callback: &dyn Fn(&[u8], &mut [ResolutionState<P>]) -> Result<u64>,
 ) -> Result<u64> {
     macro_rules! eval {
         ($e:expr) => {
@@ -102,6 +105,7 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
                 memory_regions,
                 symbol_db,
                 sizeof_headers,
+                resolutions,
                 symbol_resolution_callback,
             )
         };
@@ -120,7 +124,7 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
             SymbolLoc::Expression(expr, _) => eval!(expr),
         },
 
-        Expression::Symbol(name) => symbol_resolution_callback(name),
+        Expression::Symbol(name) => symbol_resolution_callback(name, resolutions),
 
         Expression::Add(l, r) => Ok(eval!(l)?.wrapping_add(eval!(r)?)),
         Expression::Subtract(l, r) => Ok(eval!(l)?.wrapping_sub(eval!(r)?)),
@@ -349,7 +353,8 @@ mod tests {
                 &HashMap::new(),
                 symbol_db,
                 0,
-                &|_| Ok(1),
+                &mut [],
+                &|_, _| Ok(1),
             )
         })
     }
@@ -661,7 +666,7 @@ mod tests {
         let script = SequencedLinkerScript {
             parsed: ProcessedLinkerScript {
                 input: crate::input_data::InputRef { file, entry: None },
-                symbol_defs: Vec::new(),
+                symbol_defs: indexmap::IndexMap::new(),
                 assertions,
                 file_bytes: b"",
                 memory_regions: Vec::new(),
@@ -686,8 +691,15 @@ mod tests {
             }]);
             symbol_db.add_group(group);
             assert!(
-                evaluate_assertions::<Elf>(symbol_db, layouts, sections, &[], 0, &HashMap::new())
-                    .is_ok()
+                evaluate_assertions::<Elf>(
+                    symbol_db,
+                    layouts,
+                    sections,
+                    &mut [],
+                    0,
+                    &HashMap::new()
+                )
+                .is_ok()
             );
         });
     }
@@ -701,9 +713,15 @@ mod tests {
                 remainder: b"",
             }]);
             symbol_db.add_group(group);
-            let err =
-                evaluate_assertions::<Elf>(symbol_db, layouts, sections, &[], 0, &HashMap::new())
-                    .unwrap_err();
+            let err = evaluate_assertions::<Elf>(
+                symbol_db,
+                layouts,
+                sections,
+                &mut [],
+                0,
+                &HashMap::new(),
+            )
+            .unwrap_err();
             assert!(err.to_string().contains("intentional failure"));
         });
     }
@@ -738,7 +756,8 @@ mod tests {
                     &regions,
                     symbol_db,
                     0,
-                    &|_| Ok(0),
+                    &mut [],
+                    &|_, _| Ok(0),
                 )
             };
             assert_eq!(eval(&Expression::Origin(b"rom")).unwrap(), 0x08000000);

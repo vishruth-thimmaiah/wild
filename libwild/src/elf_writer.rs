@@ -46,6 +46,7 @@ use crate::layout::FileLayout;
 use crate::layout::HeaderInfo;
 use crate::layout::InternalSymbols;
 use crate::layout::Layout;
+use crate::layout::ResolutionState;
 use crate::layout::LinkerScriptLayoutState;
 use crate::layout::ObjectLayout;
 use crate::layout::OutputRecordLayout;
@@ -1492,9 +1493,9 @@ fn write_object<'data, A: Arch<Platform = Elf>>(
     }
     for (symbol_id, resolution) in layout.resolutions_in_range(object.symbol_id_range) {
         let _span = tracing::trace_span!("Symbol", %symbol_id).entered();
-        if let Some(res) = resolution {
+        if let ResolutionState::Resolved(res) = resolution {
             table_writer
-                .process_resolution::<A>(Some(layout), layout.args(), res)
+                .process_resolution::<A>(Some(layout), layout.args(), &res)
                 .with_context(|| {
                     format!(
                         "Failed to process `{}` with resolution {res:?}",
@@ -5519,7 +5520,7 @@ fn write_dynamic_file<'data, A: Arch<Platform = Elf>>(
         if layout.symbol_db.args.got_plt_syms {
             write_got_plt_syms(layout, &mut table_writer.debug_symbol_writer, symbol_id)?;
         }
-        if let Some(res) = resolution {
+        if let ResolutionState::Resolved(res) = resolution {
             let name = object.object.symbol_name(symbol)?;
 
             if res.flags.needs_copy_relocation() {
@@ -5552,7 +5553,7 @@ fn write_dynamic_file<'data, A: Arch<Platform = Elf>>(
             }
 
             table_writer
-                .process_resolution::<A>(Some(layout), layout.args(), res)
+                .process_resolution::<A>(Some(layout), layout.args(), &res)
                 .with_context(|| format!("Failed to write {}", layout.symbol_debug(symbol_id)))?;
         }
     }

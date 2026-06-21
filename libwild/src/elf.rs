@@ -30,6 +30,7 @@ use crate::layout::ObjectLayout;
 use crate::layout::ObjectLayoutState;
 use crate::layout::OutputRecordLayout;
 use crate::layout::Resolution;
+use crate::layout::ResolutionState;
 use crate::layout::SymbolCopyInfo;
 use crate::layout::objects_iter;
 use crate::layout_rules::SectionKind;
@@ -626,7 +627,7 @@ impl platform::Platform for Elf {
             let flags = flags.get();
 
             if !flags.has_resolution() {
-                resolutions_out.write(None)?;
+                resolutions_out.write(layout::ResolutionState::Unresolved)?;
                 continue;
             }
 
@@ -657,7 +658,7 @@ impl platform::Platform for Elf {
             let resolution =
                 Self::create_resolution(flags, address, dynamic_symbol_index, memory_offsets);
 
-            resolutions_out.write(Some(resolution))?;
+            resolutions_out.write(ResolutionState::Resolved(resolution))?;
         }
 
         Ok(DynamicLayoutExt {
