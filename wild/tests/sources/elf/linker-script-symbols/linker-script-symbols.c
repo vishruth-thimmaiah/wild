@@ -12,6 +12,11 @@
 //#LinkArgs:-flto -nostdlib -znow
 //#DiffIgnore:section.got
 
+//#Config:forward-defs:default
+//#SkipLinker:ld
+//#LinkerScript:script-forward-defs.ld
+//#ExpectError:Symbol 'value5' referenced by linker script does not exist
+
 #include "../common/runtime.h"
 
 int value1 = 100;

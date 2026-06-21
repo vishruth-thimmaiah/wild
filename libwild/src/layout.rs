@@ -487,7 +487,7 @@ struct FinaliseSizesResources<'data, 'scope, P: Platform> {
 /// Update resolutions for symbol redirects.
 fn update_redirect_resolutions<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
-    resolutions: &mut [ResolutionState<P>],
+    resolutions: &mut [Option<Resolution<P>>],
     output_sections: &OutputSections<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     sizeof_headers: u64,
@@ -546,13 +546,13 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
     symbol_id: SymbolId,
     def_info: &InternalSymDefInfo<'data, P>,
     symbol_db: &SymbolDb<'data, P>,
-    resolutions: &mut [ResolutionState<P>],
+    resolutions: &mut [Option<Resolution<P>>],
     output_sections: &OutputSections<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     memory_regions: &HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
     symbol_definitions: &indexmap::IndexMap<&'data [u8], InternalSymDefInfo<'data, P>>,
-) -> Result {
+) -> Result<u64> {
     let symbol_id = symbol_db.definition(symbol_id);
     if let SymbolPlacement::Redirect(redirect) = &def_info.placement {
         let value = crate::expression_eval::evaluate_expression(
@@ -573,10 +573,12 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
 
                 let canonical_target_id = symbol_db.definition(target_symbol_id);
 
-                let resolution = &mut resolutions[canonical_target_id.as_usize()];
-                match resolution {
+                let resolution = resolutions[canonical_target_id.as_usize()]
+                    .as_mut()
+                    .ok_or_else(|| redirect.missing_resolution(name))?;
+                let value = match resolution.raw_value {
                     ResolutionState::Unresolved => {
-                        *resolution = ResolutionState::Pending;
+                        resolution.raw_value = ResolutionState::Pending;
                         let def = symbol_definitions
                             .get(name)
                             .ok_or(redirect.missing_target(name))?;
@@ -590,45 +592,32 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
                             memory_regions,
                             sizeof_headers,
                             symbol_definitions,
-                        )?;
+                        )?
                     }
                     ResolutionState::Pending => return Err(redirect.missing_target(name)),
-                    ResolutionState::Resolved(_) => {}
-                }
-
-                let resolution = match resolutions[canonical_target_id.as_usize()] {
-                    ResolutionState::Resolved(resolution) => resolution,
-                    _ => Err(redirect.missing_resolution(name))?,
+                    ResolutionState::Resolved(value) => value,
                 };
 
-                Ok(resolution.raw_value)
+                Ok(value)
             },
         )?;
 
-        let resolution = &mut resolutions[symbol_id.as_usize()];
-        match resolution {
-            ResolutionState::Resolved(r) => {
-                r.raw_value = value;
-            }
-            ResolutionState::Pending | ResolutionState::Unresolved => {
-                *resolution = ResolutionState::Resolved(Resolution {
-                    raw_value: value,
-                    dynamic_symbol_index: None,
-                    flags: ValueFlags::empty(),
-                    format_specific: Default::default(),
-                });
-            }
-        }
+        let Some(resolution) = &mut resolutions[symbol_id.as_usize()] else {
+            return Ok(0);
+        };
+
+        resolution.raw_value = ResolutionState::Resolved(value);
+        return Ok(value);
     }
 
-    Ok(())
+    Ok(0)
 }
 
 /// Update resolutions for all dynamic symbols that our output file defines.
 fn update_dynamic_symbol_resolutions<'data, P: Platform>(
     resources: &FinaliseLayoutResources<'_, 'data, P>,
     layouts: &[GroupLayout<'data, P>],
-    resolutions: &mut [ResolutionState<P>],
+    resolutions: &mut [Option<Resolution<P>>],
 ) {
     timing_phase!("Update dynamic symbol resolutions");
 
@@ -639,7 +628,7 @@ fn update_dynamic_symbol_resolutions<'data, P: Platform>(
     for (index, sym) in resources.dynamic_symbol_definitions.iter().enumerate() {
         let dynamic_symbol_index = NonZeroU32::try_from(epilogue.dynsym_start_index + index as u32)
             .expect("Dynamic symbol definitions should start > 0");
-        if let ResolutionState::Resolved(res) = &mut resolutions[sym.symbol_id.as_usize()] {
+        if let Some(res) = &mut resolutions[sym.symbol_id.as_usize()] {
             res.dynamic_symbol_index = Some(dynamic_symbol_index);
         }
     }
@@ -804,15 +793,12 @@ pub(crate) struct SegmentLayout {
 
 #[derive(Debug)]
 pub(crate) struct SymbolResolutions<P: Platform> {
-    resolutions: Vec<ResolutionState<P>>,
+    resolutions: Vec<Option<Resolution<P>>>,
 }
 
 impl<P: Platform> SymbolResolutions<P> {
     pub(crate) fn get(&self, symbol_id: SymbolId) -> Option<&Resolution<P>> {
-        match self.resolutions[symbol_id.as_usize()] {
-            ResolutionState::Resolved(ref resolution) => Some(resolution),
-            _ => None,
-        }
+        self.resolutions[symbol_id.as_usize()].as_ref()
     }
 }
 
@@ -830,7 +816,7 @@ pub(crate) enum FileLayout<'data, P: Platform> {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct Resolution<P: Platform> {
     /// An address or absolute value.
-    pub(crate) raw_value: u64,
+    pub(crate) raw_value: ResolutionState,
 
     pub(crate) dynamic_symbol_index: Option<NonZeroU32>,
 
@@ -839,11 +825,11 @@ pub(crate) struct Resolution<P: Platform> {
     pub(crate) format_specific: P::ResolutionExt,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum ResolutionState<P: Platform> {
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ResolutionState {
     Unresolved,
     Pending,
-    Resolved(Resolution<P>),
+    Resolved(u64),
 }
 
 /// Address information for a section.
@@ -872,7 +858,7 @@ impl SectionResolution {
     pub(crate) fn full_resolution<P: Platform>(self) -> Option<Resolution<P>> {
         let address = self.address()?;
         Some(Resolution {
-            raw_value: address,
+            raw_value: ResolutionState::Resolved(address),
             dynamic_symbol_index: None,
             flags: ValueFlags::empty(),
             format_specific: Default::default(),
@@ -1652,7 +1638,7 @@ impl<'data, P: Platform> Layout<'data, P> {
     pub(crate) fn resolutions_in_range(
         &self,
         range: SymbolIdRange,
-    ) -> impl Iterator<Item = (SymbolId, ResolutionState<P>)> {
+    ) -> impl Iterator<Item = (SymbolId, Option<Resolution<P>>)> {
         self.symbol_resolutions.resolutions[range.as_usize()]
             .iter()
             .enumerate()
@@ -1880,7 +1866,7 @@ fn compute_start_offsets_by_group<P: Platform>(
 fn compute_symbols_and_layouts<'data, P: Platform>(
     group_states: Vec<GroupState<'data, P>>,
     starting_mem_offsets_by_group: Vec<OutputSectionPartMap<u64>>,
-    per_group_res_writers: &mut [sharded_vec_writer::Shard<ResolutionState<P>>],
+    per_group_res_writers: &mut [sharded_vec_writer::Shard<Option<Resolution<P>>>],
     resources: &FinaliseLayoutResources<'_, 'data, P>,
 ) -> Result<Vec<GroupLayout<'data, P>>> {
     timing_phase!("Assign symbol addresses");
@@ -2511,7 +2497,7 @@ impl<'data, P: Platform> GroupState<'data, P> {
     fn finalise_layout(
         self,
         memory_offsets: &mut OutputSectionPartMap<u64>,
-        resolutions_out: &mut sharded_vec_writer::Shard<ResolutionState<P>>,
+        resolutions_out: &mut sharded_vec_writer::Shard<Option<Resolution<P>>>,
         resources: &FinaliseLayoutResources<'_, 'data, P>,
     ) -> Result<GroupLayout<'data, P>> {
         let format_specific = P::finalise_group_layout(memory_offsets);
@@ -2826,7 +2812,7 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
     fn finalise_layout(
         self,
         memory_offsets: &mut OutputSectionPartMap<u64>,
-        resolutions_out: &mut sharded_vec_writer::Shard<ResolutionState<P>>,
+        resolutions_out: &mut sharded_vec_writer::Shard<Option<Resolution<P>>>,
         resources: &FinaliseLayoutResources<'_, 'data, P>,
     ) -> Result<FileLayout<'data, P>> {
         let resolutions_out = &mut ResolutionWriter { resolutions_out };
@@ -2867,7 +2853,7 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
             }
             Self::NotLoaded(s) => {
                 for _ in 0..s.symbol_id_range.len() {
-                    resolutions_out.write(ResolutionState::Unresolved)?;
+                    resolutions_out.write(None)?;
                 }
                 FileLayout::NotLoaded
             }
@@ -3681,9 +3667,9 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
     resources: &FinaliseLayoutResources<'_, 'data, P>,
     def_info: &InternalSymDefInfo<P>,
     symbol_id: SymbolId,
-) -> ResolutionState<P> {
+) -> Option<Resolution<P>> {
     if !resources.symbol_db.is_canonical(symbol_id) {
-        return ResolutionState::Unresolved;
+        return None;
     }
 
     if !resources
@@ -3691,17 +3677,19 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
         .flags_for_symbol(symbol_id)
         .has_resolution()
     {
-        return ResolutionState::Unresolved;
+        return None;
     }
 
     let raw_value = match def_info.placement {
-        SymbolPlacement::Undefined | SymbolPlacement::ForceUndefined => 0,
+        SymbolPlacement::Undefined | SymbolPlacement::ForceUndefined => {
+            ResolutionState::Resolved(0)
+        }
         SymbolPlacement::SectionStart(section_id) => {
-            resources.section_layouts.get(section_id).mem_offset
+            ResolutionState::Resolved(resources.section_layouts.get(section_id).mem_offset)
         }
         SymbolPlacement::SectionEnd(section_id) => {
             let sec = resources.section_layouts.get(section_id);
-            sec.mem_offset + sec.mem_size
+            ResolutionState::Resolved(sec.mem_offset + sec.mem_size)
         }
         SymbolPlacement::SectionGroupEnd(section_id) => {
             let mut end = {
@@ -3720,13 +3708,13 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
                     }
                 }
             }
-            end
+            ResolutionState::Resolved(end)
         }
         SymbolPlacement::Redirect(_) => {
             // For redirects to other symbols, we defer resolution until later when all symbols have
             // been resolved. This is handled by update_redirect_resolutions() which is called after
             // layout is complete.
-            return ResolutionState::Unresolved;
+            ResolutionState::Unresolved
         }
         SymbolPlacement::LoadBaseAddress => match resources
             .segment_layouts
@@ -3735,12 +3723,12 @@ fn create_internal_symbol_resolution<'data, P: Platform>(
             .find(|seg| resources.program_segments.segment_def(seg.id).is_loadable())
             .map(|seg| seg.sizes.mem_offset)
         {
-            Some(offset) => offset,
-            None => return ResolutionState::Unresolved,
+            Some(offset) => ResolutionState::Resolved(offset),
+            None => return None,
         },
     };
 
-    ResolutionState::Resolved(P::create_resolution(
+    Some(P::create_resolution(
         resources
             .symbol_db
             .flags_for_symbol(resources.per_symbol_flags, symbol_id),
@@ -4391,12 +4379,12 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
         local_symbol_index: object::SymbolIndex,
         section_resolutions: &[SectionResolution],
         memory_offsets: &mut OutputSectionPartMap<u64>,
-    ) -> Result<ResolutionState<P>> {
+    ) -> Result<Option<Resolution<P>>> {
         let symbol_id_range = self.symbol_id_range();
         let symbol_id = symbol_id_range.input_to_id(local_symbol_index);
 
         if !flags.has_resolution() || !resources.symbol_db.is_canonical(symbol_id) {
-            return Ok(ResolutionState::Unresolved);
+            return Ok(None);
         }
 
         let raw_value = if let Some(section_index) = self
@@ -4428,7 +4416,7 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
                 // Don't error for mapping symbols. They cannot have relocations refer to
                 // them, so we don't need to produce a resolution.
                 if resources.symbol_db.is_mapping_symbol(symbol_id) {
-                    return Ok(ResolutionState::Unresolved);
+                    return Ok(None);
                 }
                 bail!(
                     "Symbol is in a section that we didn't load. \
@@ -4457,9 +4445,9 @@ impl<'data, P: Platform> ObjectLayoutState<'data, P> {
             );
         }
 
-        Ok(ResolutionState::Resolved(P::create_resolution(
+        Ok(Some(P::create_resolution(
             flags,
-            raw_value,
+            ResolutionState::Resolved(raw_value),
             dynamic_symbol_index,
             memory_offsets,
         )))
@@ -4647,11 +4635,11 @@ fn can_export_symbol<'data, P: Platform>(
 }
 
 pub(crate) struct ResolutionWriter<'writer, 'out, P: Platform> {
-    resolutions_out: &'writer mut sharded_vec_writer::Shard<'out, ResolutionState<P>>,
+    resolutions_out: &'writer mut sharded_vec_writer::Shard<'out, Option<Resolution<P>>>,
 }
 
 impl<P: Platform> ResolutionWriter<'_, '_, P> {
-    pub(crate) fn write(&mut self, res: ResolutionState<P>) -> Result {
+    pub(crate) fn write(&mut self, res: Option<Resolution<P>>) -> Result {
         self.resolutions_out.try_push(res)?;
         Ok(())
     }
@@ -4677,14 +4665,14 @@ impl<'data> StubLibraryLayoutState<'data> {
                 .symbol_db
                 .flags_for_symbol(resources.per_symbol_flags, symbol_id);
             if flags.has_resolution() && resources.symbol_db.is_canonical(symbol_id) {
-                resolutions_out.write(ResolutionState::Resolved(P::create_resolution(
+                resolutions_out.write(Some(P::create_resolution(
                     flags,
-                    0,
+                    ResolutionState::Resolved(0),
                     None,
                     memory_offsets,
                 )))?;
             } else {
-                resolutions_out.write(ResolutionState::Unresolved)?;
+                resolutions_out.write(None)?;
             }
         }
 
@@ -4725,18 +4713,25 @@ impl<P: Platform> Resolution<P> {
     }
 
     pub(crate) fn value(self) -> u64 {
-        self.raw_value
+        match self.raw_value {
+            ResolutionState::Resolved(r) => r,
+            _ => 0,
+        }
+    }
+
+    pub(crate) fn set_value(&mut self, raw_value: u64) {
+        self.raw_value = ResolutionState::Resolved(raw_value);
     }
 
     pub(crate) fn address(&self) -> Result<u64> {
         if !self.flags.is_address() {
             bail!("Expected address, found {}", self.flags);
         }
-        Ok(self.raw_value)
+        Ok(self.value())
     }
 
     pub(crate) fn value_for_symbol_table(&self) -> u64 {
-        self.raw_value
+        self.value()
     }
 
     pub(crate) fn is_absolute(&self) -> bool {
@@ -5065,7 +5060,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
     per_symbol_flags: &PerSymbolFlags,
     memory_regions: &mut HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
-    resolutions: &mut [ResolutionState<A::Platform>],
+    resolutions: &mut [Option<Resolution<A::Platform>>],
 ) -> Result {
     timing_phase!("Iterative relaxation");
 
@@ -5137,7 +5132,7 @@ fn layout_section<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
     memory_regions: &mut HashMap<&[u8], MemoryRegion>,
     sizeof_headers: u64,
-    resolutions: &mut [ResolutionState<P>],
+    resolutions: &mut [Option<Resolution<P>>],
 ) -> Result<(
     OutputSectionPartMap<OutputRecordLayout>,
     OutputSectionMap<OutputRecordLayout>,
@@ -5813,7 +5808,12 @@ fn verify_consistent_allocation_handling<P: Platform>(
         flags.is_dynamic() || (flags.needs_export_dynamic() && flags.is_interposable());
     let dynamic_symbol_index = has_dynamic_symbol.then(|| NonZeroU32::new(1).unwrap());
 
-    let resolution = P::create_resolution(flags, 0, dynamic_symbol_index, &mut memory_offsets);
+    let resolution = P::create_resolution(
+        flags,
+        ResolutionState::Resolved(0),
+        dynamic_symbol_index,
+        &mut memory_offsets,
+    );
 
     P::verify_resolution_allocation(
         &output_sections,

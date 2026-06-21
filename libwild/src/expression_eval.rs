@@ -9,6 +9,7 @@ use crate::error::Result;
 use crate::grouping::Group;
 use crate::layout;
 use crate::layout::OutputRecordLayout;
+use crate::layout::Resolution;
 use crate::layout::ResolutionState;
 use crate::linker_script::Expression;
 use crate::output_section_id::OutputSections;
@@ -34,7 +35,7 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
     symbol_db: &SymbolDb<'data, P>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     output_sections: &OutputSections<'data, P>,
-    resolutions: &mut [ResolutionState<P>],
+    resolutions: &mut [Option<Resolution<P>>],
     sizeof_headers: u64,
     memory_regions: &HashMap<&[u8], layout::MemoryRegion>,
 ) -> Result {
@@ -66,10 +67,14 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
                         };
 
                         let canonical_target_id = symbol_db.definition(target_symbol_id);
-                        match resolutions[canonical_target_id.as_usize()] {
-                            ResolutionState::Resolved(r) => Ok(r.raw_value),
-                            _ => Ok(0),
-                        }
+                        let resolution =
+                            resolutions[canonical_target_id.as_usize()].map_or(0, |r| {
+                                match r.raw_value {
+                                    ResolutionState::Resolved(r) => r,
+                                    _ => 0,
+                                }
+                            });
+                        Ok(resolution)
                     },
                 )
                 .with_context(|| format!("{}:{}: Failed to evaluate ASSERT", parsed.input, line))?;
@@ -93,8 +98,8 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
     memory_regions: &HashMap<&[u8], layout::MemoryRegion>,
     symbol_db: &SymbolDb<'data, P>,
     sizeof_headers: u64,
-    resolutions: &mut [ResolutionState<P>],
-    symbol_resolution_callback: &dyn Fn(&[u8], &mut [ResolutionState<P>]) -> Result<u64>,
+    resolutions: &mut [Option<Resolution<P>>],
+    symbol_resolution_callback: &dyn Fn(&[u8], &mut [Option<Resolution<P>>]) -> Result<u64>,
 ) -> Result<u64> {
     macro_rules! eval {
         ($e:expr) => {
