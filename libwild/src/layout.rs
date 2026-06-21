@@ -590,11 +590,11 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
                             memory_regions,
                             sizeof_headers,
                             symbol_definitions,
-                        )?
+                        )?;
                     }
                     ResolutionState::Pending => return Err(redirect.missing_target(name)),
                     ResolutionState::Resolved(_) => {}
-                };
+                }
 
                 let resolution = match resolutions[canonical_target_id.as_usize()] {
                     ResolutionState::Resolved(resolution) => resolution,
@@ -4705,7 +4705,7 @@ impl<'data, P: Platform> resolution::ResolvedFile<'data, P> {
             }
             resolution::ResolvedFile::NotLoaded(s) => FileLayoutState::NotLoaded(s),
             resolution::ResolvedFile::LinkerScript(s) => {
-                FileLayoutState::LinkerScript(LinkerScriptLayoutState::new(s))
+                FileLayoutState::LinkerScript(LinkerScriptLayoutState::new(&s))
             }
             resolution::ResolvedFile::SyntheticSymbols(s) => {
                 FileLayoutState::SyntheticSymbols(SyntheticSymbolsLayoutState::new(s))
@@ -5546,7 +5546,7 @@ impl<'data, P: Platform> LinkerScriptLayoutState<'data, P> {
             .finalise_layout(memory_offsets, resolutions_out, resources)
     }
 
-    fn new(input: resolution::ResolvedLinkerScript<'data, P>) -> Self {
+    fn new(input: &resolution::ResolvedLinkerScript<'data, P>) -> Self {
         Self {
             file_id: input.file_id,
             input: input.input,

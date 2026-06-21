@@ -84,6 +84,7 @@ pub(crate) fn evaluate_assertions<'data, P: Platform>(
     Ok(())
 }
 
+#[expect(clippy::type_complexity)]
 pub(crate) fn evaluate_expression<'data, P: Platform>(
     expr: &Expression<'data>,
     expr_loc: &SymbolLoc<'data>,

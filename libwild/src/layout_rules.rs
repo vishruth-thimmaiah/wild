@@ -181,7 +181,10 @@ impl<'data> LayoutRulesBuilder<'data> {
                     expression: value.to_owned(),
                     loc: loc_for_global_expr(value, current_section_id),
                 });
-                symbol_defs.insert(name, crate::parsing::InternalSymDefInfo::new(placement, name));
+                symbol_defs.insert(
+                    name,
+                    crate::parsing::InternalSymDefInfo::new(placement, name),
+                );
             } else if let linker_script::Command::Sections(sections) = cmd {
                 let mut location = None;
 
