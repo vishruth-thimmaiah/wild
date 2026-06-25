@@ -5137,8 +5137,6 @@ fn layout_section<'data, P: Platform>(
                 let section_info = output_sections.output_info(section_id);
                 let part_id_range = section_id.part_id_range();
                 let max_alignment = sizes.max_alignment(part_id_range.clone(), output_sections);
-                let merge_target = output_sections.primary_output_section(section_id);
-                let section_flags = output_sections.section_flags(merge_target);
                 let region = section_info
                     .region_name
                     .map(|region_name| {
@@ -5164,6 +5162,8 @@ fn layout_section<'data, P: Platform>(
                             String::from_utf8_lossy(section_info.region_name.unwrap()),
                         );
                     }
+                    let merge_target = output_sections.primary_output_section(section_id);
+                    let section_flags = output_sections.section_flags(merge_target);
                     if section_flags.is_alloc() && output_sections.has_data_in_file(merge_target) {
                         let new_offset = offset
                             .checked_sub(mem_offset)
@@ -5181,6 +5181,8 @@ fn layout_section<'data, P: Platform>(
                     .try_for_each(|(offset, (part_layout, &part_size))| -> Result {
                         let part_id = part_id_range.start.offset(offset);
                         let alignment = part_id.alignment(output_sections).min(max_alignment);
+                        let merge_target = output_sections.primary_output_section(section_id);
+                        let section_flags = output_sections.section_flags(merge_target);
                         let mem_size = if section_id == output_section_id::RELRO_PADDING {
                             let page_alignment = args.loadable_segment_alignment();
                             let aligned_offset = page_alignment.align_up(mem_offset);
