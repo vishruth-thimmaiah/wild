@@ -302,6 +302,10 @@ impl<'data> LayoutRulesBuilder<'data> {
                                             )),
                                             Box::new(location.address.clone()),
                                         ));
+                                        last_symbol_loc = SymbolLoc::RelativeExpression(
+                                            location.address.clone(),
+                                            primary_section_id,
+                                        );
                                     }
                                 }
                             }
@@ -318,7 +322,8 @@ impl<'data> LayoutRulesBuilder<'data> {
                             let section_id = match loc {
                                 SymbolLoc::Expression(_, section_id) => section_id,
                                 SymbolLoc::SectionStart(section_id)
-                                | SymbolLoc::SectionEnd(section_id) => Some(section_id),
+                                | SymbolLoc::SectionEnd(section_id)
+                                | SymbolLoc::RelativeExpression(_, section_id) => Some(section_id),
                                 _ => None,
                             };
                             loc = SymbolLoc::Expression(new_location.address.clone(), section_id);
