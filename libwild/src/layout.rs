@@ -5107,7 +5107,7 @@ fn perform_iterative_relaxation<'data, A: Arch>(
     Ok(())
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 fn compute_layout_sections<'data, P: Platform>(
     sizes: &OutputSectionPartMap<u64>,
     output_sections: &OutputSections<'data, P>,
