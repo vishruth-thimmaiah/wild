@@ -4,6 +4,7 @@
 
 use crate::LayoutRules;
 use crate::alignment::Alignment;
+use crate::args::OrphanHandling;
 use crate::bail;
 use crate::debug_assert_bail;
 use crate::error::Context as _;
@@ -107,7 +108,7 @@ impl<'data, P: Platform> Resolver<'data, P> {
             &mut symbol_db.section_part_ids,
             output_sections,
             symbol_db.args,
-        );
+        )?;
 
         let start_stop_sections =
             P::NEEDS_START_STOP_SECTION_GC.then(|| output_sections.new_section_map());
@@ -860,7 +861,7 @@ fn assign_section_ids<'data, P: Platform>(
     section_part_ids: &mut [PartId],
     output_sections: &mut OutputSections<'data, P>,
     args: &P::Args,
-) {
+) -> Result {
     timing_phase!("Assign section IDs");
 
     // An optimised path for partial linking to avoid allocating too many OutputSectionIds. We skip
@@ -874,7 +875,8 @@ fn assign_section_ids<'data, P: Platform>(
                 .any(|file| matches!(file, ResolvedFile::LinkerScript(_)))
         })
     {
-        return assign_section_ids_partial(resolved, section_part_ids, output_sections, args);
+        assign_section_ids_partial(resolved, section_part_ids, output_sections, args);
+        return Ok(());
     }
 
     for group in resolved {
@@ -883,8 +885,9 @@ fn assign_section_ids<'data, P: Platform>(
                 let obj_part_ids = &mut section_part_ids[s.section_id_range.as_usize()];
 
                 for custom in &s.custom_sections {
-                    obj_part_ids[custom.index.0] =
-                        output_sections.get_or_create_custom_section_part(args, custom);
+                    let part_id = output_sections.get_or_create_custom_section_part(args, custom);
+                    obj_part_ids[custom.index.0] = part_id;
+                    check_orphan_placement(args, &s.common.input, custom)?;
                 }
 
                 apply_init_fini_secondaries(
@@ -896,6 +899,31 @@ fn assign_section_ids<'data, P: Platform>(
             }
         }
     }
+
+    Ok(())
+}
+
+fn check_orphan_placement<P: Platform>(
+    args: &P::Args,
+    input: &impl std::fmt::Display,
+    custom: &CustomSectionDetails<'_, P>,
+) -> Result {
+    match args.orphan_handling() {
+        OrphanHandling::Warn => {
+            args.warning(format!(
+                "unplaced orphan section '{}' from '{input}'",
+                custom.identity.section_name(),
+            ));
+        }
+        OrphanHandling::Error => {
+            bail!(
+                "unplaced orphan section '{}' from '{input}'",
+                custom.identity.section_name(),
+            );
+        }
+        OrphanHandling::Place | OrphanHandling::Discard => {}
+    }
+    Ok(())
 }
 
 fn populate_start_stop_sections<'data, P: Platform>(
@@ -1641,6 +1669,10 @@ fn resolve_section<'data, P: Platform>(
             return Ok((SectionSlot::Discard, crate::part_id::UNMAPPED));
         }
         SectionRuleOutcome::Custom => {
+            if args.orphan_handling() == OrphanHandling::Discard {
+                return Ok((SectionSlot::Discard, crate::part_id::UNMAPPED));
+            }
+
             part_id = PartId::CUSTOM_PLACEHOLDER;
             unloaded_section = UnloadedSection::new();
             unloaded_section.start_stop_eligible = !section_name.starts_with(b".");
