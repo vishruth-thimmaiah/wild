@@ -253,7 +253,6 @@ tests = [
   "noinhibit-exec.sh",
   "rodata-name.sh",
   "section-attributes.sh",
-  "strip.sh",
   "stt-common.sh",
   "symbol-version-as-needed.sh",
   "symbol-version-multi.sh",
