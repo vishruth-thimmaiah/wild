@@ -124,6 +124,7 @@ pub struct ElfArgs {
     pack_dyn_relocs: PackDynRelocs,
     pub(crate) use_android_relr_tags: bool,
     pub(crate) discard_sframe: bool,
+    pub(crate) discard_none: bool,
 
     pub(crate) should_output_executable: bool,
     pub(crate) should_output_partial_object: bool,
@@ -323,6 +324,7 @@ impl Default for ElfArgs {
             pack_dyn_relocs: PackDynRelocs::None,
             use_android_relr_tags: false,
             discard_sframe: false,
+            discard_none: false,
 
             nmagic: false,
             rosegment: true,
@@ -852,6 +854,7 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
             args.relro = false;
             args.should_write_linker_identity = false;
             args.merge_sections = false;
+            args.discard_none = true;
             Ok(())
         });
 
@@ -1803,6 +1806,15 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
             Ok(())
         });
 
+    parser
+        .declare()
+        .long("discard-none")
+        .help("Keep all symbols in the symbol table")
+        .execute(|args, _modifier_stack| {
+            args.discard_none = true;
+            Ok(())
+        });
+
     super::declare_common_args(&mut parser);
 
     add_silently_ignored_flags(&mut parser);
@@ -2053,6 +2065,10 @@ impl platform::Args for ElfArgs {
 
     fn should_output_partial_object(&self) -> bool {
         self.should_output_partial_object
+    }
+
+    fn discard_none(&self) -> bool {
+        self.discard_none
     }
 
     fn should_write_gdb_index(&self) -> bool {

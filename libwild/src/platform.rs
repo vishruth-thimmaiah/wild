@@ -1652,6 +1652,10 @@ pub(crate) trait Args: std::fmt::Debug + Send + Sync + 'static {
         false
     }
 
+    fn discard_none(&self) -> bool {
+        false
+    }
+
     fn architecture(&self) -> Architecture {
         Architecture::Unsupported
     }
