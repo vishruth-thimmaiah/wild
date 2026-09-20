@@ -887,7 +887,10 @@ fn assign_section_ids<'data, P: Platform>(
                 for custom in &s.custom_sections {
                     let part_id = output_sections.get_or_create_custom_section_part(args, custom);
                     obj_part_ids[custom.index.0] = part_id;
-                    check_orphan_placement(args, &s.common.input, custom)?;
+
+                    let output_sec_id = part_id.output_section_id::<P>();
+                    let output_sec_name = output_sections.display_name(output_sec_id);
+                    check_orphan_placement(args, &s.common.input, custom, &output_sec_name)?;
                 }
 
                 apply_init_fini_secondaries(
@@ -907,11 +910,12 @@ fn check_orphan_placement<P: Platform>(
     args: &P::Args,
     input: &impl std::fmt::Display,
     custom: &CustomSectionDetails<'_, P>,
+    section_name: &str,
 ) -> Result {
     match args.orphan_handling() {
         OrphanHandling::Warn => {
             args.warning(format!(
-                "unplaced orphan section '{}' from '{input}'",
+                "unplaced orphan section '{}' from '{input}' being placed in section {section_name}",
                 custom.identity.section_name(),
             ));
         }

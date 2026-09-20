@@ -14,7 +14,7 @@
 
 //#Config:orphan-warn:default
 //#LinkArgs:--orphan-handling=warn
-//#ExpectWarning:unplaced orphan section .\.orphan_section' from .*linker-script-orphan-handling\.c\.o'
+//#ExpectWarning:orphan section .\.orphan_section' from .*linker-script-orphan-handling\.c\.o' being placed in section .\.orphan_section.
 
 //#Config:orphan-error:default
 //#LinkArgs:--orphan-handling=error
