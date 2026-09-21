@@ -641,7 +641,8 @@ pub(crate) enum UnresolvedSymbols {
     IgnoreAll,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default, strum::EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub(crate) enum OrphanHandling {
     #[default]
     Place,

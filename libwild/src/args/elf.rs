@@ -2026,13 +2026,9 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
         .long("orphan-handling")
         .help("Control how orphan sections are handled. An orphan section is one not specifically mentioned in a linker script")
         .execute(|args, _modifier_stack, value| {
-            args.orphan_handling = match value {
-                "place" => OrphanHandling::Place,
-                "warn" => OrphanHandling::Warn,
-                "error" => OrphanHandling::Error,
-                "discard" => OrphanHandling::Discard,
-                other => bail!("Invalid orphan handling value {other}"),
-            };
+            args.orphan_handling = value
+                .parse::<OrphanHandling>()
+                .map_err(|_| error!("Invalid orphan handling value {value}"))?;
             Ok(())
         });
 
