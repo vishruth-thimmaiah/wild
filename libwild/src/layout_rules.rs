@@ -30,44 +30,34 @@ use crate::parsing::SymbolPlacement;
 use crate::platform::Args as _;
 use crate::platform::Platform;
 use crate::platform::SectionHeader;
-use bitflags::bitflags;
 use glob::Pattern;
 use hashbrown::HashTable;
 use std::borrow::Cow;
 
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-    pub(crate) struct LinkerManagedSections: u8 {
-        const EH_FRAME = 1 << 0;
-        const NOTE_GNU_PROPERTY = 1 << 1;
-        const RISCV_ATTRIBUTES = 1 << 2;
-        const NOTE_GNU_STACK = 1 << 3;
-    }
-}
-
 pub(crate) struct LayoutRules<'data> {
     pub(crate) section_rules: SectionRules<'data>,
-    pub(crate) linker_managed_outputs: Option<LinkerManagedSections>,
+    pub(crate) has_linker_script: bool,
 }
 
 impl<'data> LayoutRules<'data> {
-    pub(crate) fn script_places(&self, outcome: SectionRuleOutcome) -> bool {
-        self.linker_managed_outputs
-            .is_some_and(|outputs| outputs.intersects(get_linker_managed_section(outcome)))
-    }
+    pub(crate) fn is_orphan<P: Platform>(
+        &self,
+        section_name: &[u8],
+        file_name: Option<&[u8]>,
+        section_header: &impl SectionHeader,
+    ) -> bool {
+        if section_header.should_exclude() {
+            return false;
+        }
 
-    pub(crate) fn has_linker_script(&self) -> bool {
-        self.linker_managed_outputs.is_some()
-    }
-}
-
-fn get_linker_managed_section(outcome: SectionRuleOutcome) -> LinkerManagedSections {
-    match outcome {
-        SectionRuleOutcome::EhFrame => LinkerManagedSections::EH_FRAME,
-        SectionRuleOutcome::NoteGnuProperty => LinkerManagedSections::NOTE_GNU_PROPERTY,
-        SectionRuleOutcome::RiscVAttribute => LinkerManagedSections::RISCV_ATTRIBUTES,
-        SectionRuleOutcome::NoteGnuStack => LinkerManagedSections::NOTE_GNU_STACK,
-        _ => LinkerManagedSections::empty(),
+        if let Some(rule) = self.section_rules.lookup_rule(section_name, file_name) {
+            if rule.outcome == SectionRuleOutcome::Discard {
+                return false;
+            }
+            self.has_linker_script && !rule.from_linker_script
+        } else {
+            true
+        }
     }
 }
 
@@ -75,7 +65,6 @@ fn get_linker_managed_section(outcome: SectionRuleOutcome) -> LinkerManagedSecti
 pub(crate) struct LayoutRulesBuilder<'data> {
     rules: Vec<SectionRule<'data>>,
     num_location_counters: usize,
-    linker_managed_sections: LinkerManagedSections,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -130,6 +119,9 @@ pub(crate) struct SectionRule<'data> {
 
     /// What to do if the rule matches.
     outcome: SectionRuleOutcome,
+
+    /// Whether the rule was defined in a linker script.
+    from_linker_script: bool,
 }
 
 /// What should be done with a particular input section.
@@ -279,7 +271,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                     match contents_cmd {
                                         ContentsCommand::Matcher(matcher) => {
                                             for pattern in &matcher.input_section_name_patterns {
-                                                self.add_script_section_rule(SectionRule::new(
+                                                self.add_section_rule(SectionRule::new(
                                                     pattern.name,
                                                     matcher.input_file_pattern,
                                                     crate::layout_rules::SectionRuleOutcome::Discard,
@@ -385,7 +377,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                                 primary_section_id, output_info
                                             );
 
-                                            self.add_script_section_rule(SectionRule::new(
+                                            self.add_section_rule(SectionRule::new(
                                                 pattern.name,
                                                 matcher.input_file_pattern,
                                                 outcome,
@@ -562,17 +554,12 @@ impl<'data> LayoutRulesBuilder<'data> {
 
         LayoutRules {
             section_rules,
-            linker_managed_outputs: has_linker_script.then_some(self.linker_managed_sections),
+            has_linker_script,
         }
     }
 
     pub(crate) fn add_section_rule(&mut self, rule: SectionRule<'data>) {
         self.rules.push(rule);
-    }
-
-    fn add_script_section_rule(&mut self, rule: SectionRule<'data>) {
-        self.linker_managed_sections |= get_linker_managed_section(rule.outcome);
-        self.add_section_rule(rule);
     }
 }
 
@@ -600,6 +587,7 @@ impl<'data> SectionRule<'data> {
             name_matcher,
             input_file_pattern: compiled_file_pattern,
             outcome,
+            from_linker_script: true,
         })
     }
 
@@ -676,6 +664,7 @@ impl<'data> SectionRule<'data> {
             name_matcher: SectionNameMatcher::Prefix(name),
             input_file_pattern: None,
             outcome: SectionRuleOutcome::SortedSection(SectionOutputInfo::keep(section_id)),
+            from_linker_script: false,
         }
     }
 
@@ -687,6 +676,7 @@ impl<'data> SectionRule<'data> {
             name_matcher: SectionNameMatcher::Exact(Cow::Borrowed(name)),
             input_file_pattern: None,
             outcome,
+            from_linker_script: false,
         }
     }
 
@@ -698,6 +688,7 @@ impl<'data> SectionRule<'data> {
             name_matcher: SectionNameMatcher::Prefix(name),
             input_file_pattern: None,
             outcome,
+            from_linker_script: false,
         }
     }
 }
@@ -725,6 +716,16 @@ impl<'data> SectionRules<'data> {
         map
     }
 
+    pub(crate) fn lookup_rule(
+        &self,
+        section_name: &[u8],
+        file_name: Option<&[u8]>,
+    ) -> Option<&SectionRule<'data>> {
+        let hash = section_name_prefix_hash(section_name)?;
+        self.rules
+            .find(hash, |rule| rule.matches(section_name, file_name))
+    }
+
     #[inline(always)]
     pub(crate) fn lookup<P: Platform>(
         &self,
@@ -736,11 +737,7 @@ impl<'data> SectionRules<'data> {
             return SectionRuleOutcome::Discard;
         }
 
-        if let Some(hash) = section_name_prefix_hash(section_name)
-            && let Some(rule) = self
-                .rules
-                .find(hash, |rule| rule.matches(section_name, file_name))
-        {
+        if let Some(rule) = self.lookup_rule(section_name, file_name) {
             return rule.outcome;
         }
 
