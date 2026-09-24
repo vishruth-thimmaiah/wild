@@ -11,7 +11,6 @@ use crate::error;
 use crate::error::Context as _;
 use crate::error::Error;
 use crate::error::Result;
-use crate::error::combine_errors;
 use crate::grouping::Group;
 use crate::grouping::SequencedInputObject;
 use crate::hash::PassThroughHashMap;
@@ -915,8 +914,7 @@ fn check_orphan_placement<P: Platform>(
     args: &P::Args,
     input_file: &impl std::fmt::Display,
     section: &impl std::fmt::Display,
-    orphan_sections: &mut Vec<Error>,
-) -> bool {
+) -> Result<bool> {
     match args.orphan_handling() {
         OrphanHandling::Warn => {
             args.warning(format!(
@@ -924,14 +922,12 @@ fn check_orphan_placement<P: Platform>(
             ));
         }
         OrphanHandling::Error => {
-            orphan_sections.push(error!(
-                "unplaced orphan section '{section}' from '{input_file}'",
-            ));
+            bail!("unplaced orphan section '{section}' from '{input_file}'");
         }
-        OrphanHandling::Discard => return true,
+        OrphanHandling::Discard => return Ok(true),
         OrphanHandling::Place => {}
     }
-    false
+    Ok(false)
 }
 
 fn populate_start_stop_sections<'data, P: Platform>(
@@ -1066,7 +1062,7 @@ fn assign_section_ids_partial<'data, P: Platform>(
         }
     }
 
-    let mut orphan_sections = Vec::new();
+    let mut error_builder = error::MultiErrorBuilder::new();
 
     // Allocate non-singleton sections.
     for group in resolved {
@@ -1090,20 +1086,19 @@ fn assign_section_ids_partial<'data, P: Platform>(
                             SectionRuleOutcome::Custom
                         )
                     {
-                        check_orphan_placement::<P>(
+                        let _ = check_orphan_placement::<P>(
                             args,
                             &object.common.input,
                             &custom.identity.section_name(),
-                            &mut orphan_sections,
-                        );
+                        )
+                        .map_err(|e| error_builder.add_error(e));
                     }
                 }
             }
         }
     }
 
-    combine_errors(orphan_sections)?;
-    Ok(())
+    error_builder.emit_errors_if_any()
 }
 
 fn is_partial_link_singleton_candidate<P: Platform>(
@@ -1547,7 +1542,7 @@ fn resolve_sections_for_object<'data, P: Platform>(
     let mut sections = Vec::with_capacity(obj.common.object.num_sections());
     let mut section_part_ids = Vec::with_capacity(obj.common.object.num_sections());
     let mut executable_bytes: u64 = 0;
-    let mut orphan_sections = Vec::new();
+    let mut error_builder = error::MultiErrorBuilder::new();
     for (input_section_index, input_section) in obj.common.object.enumerate_sections() {
         let section_size = obj.common.object.section_size(input_section).unwrap_or(0);
         if input_section.is_executable() {
@@ -1561,12 +1556,12 @@ fn resolve_sections_for_object<'data, P: Platform>(
             allocator,
             loaded_metrics,
             layout_rules,
-            &mut orphan_sections,
+            &mut error_builder,
         )?;
         sections.push(slot);
         section_part_ids.push(part_id);
     }
-    combine_errors(orphan_sections)?;
+    error_builder.emit_errors_if_any()?;
     obj.executable_bytes = executable_bytes;
     Ok((sections, section_part_ids))
 }
@@ -1580,7 +1575,7 @@ fn resolve_section<'data, P: Platform>(
     allocator: &bumpalo_herd::Member<'data>,
     loaded_metrics: &LoadedMetrics,
     layout_rules: &LayoutRules,
-    orphan_sections: &mut Vec<Error>,
+    error_builder: &mut error::MultiErrorBuilder,
 ) -> Result<(SectionSlot, PartId)> {
     let section_name = obj
         .common
@@ -1631,8 +1626,9 @@ fn resolve_section<'data, P: Platform>(
             args,
             &obj.common.input,
             &String::from_utf8_lossy(section_name),
-            orphan_sections,
         )
+        .map_err(|e| error_builder.add_error(e))
+        .is_ok_and(|is_discarded| is_discarded)
     {
         return Ok((SectionSlot::Discard, crate::part_id::UNMAPPED));
     }
