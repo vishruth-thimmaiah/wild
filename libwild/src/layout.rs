@@ -14,6 +14,7 @@ use crate::ensure;
 use crate::error;
 use crate::error::Context;
 use crate::error::Error;
+use crate::error::MultiErrorBuilder;
 use crate::error::Result;
 use crate::expression_eval::ResolvedLocationCounter;
 use crate::expression_eval::SymbolValue;
@@ -1673,7 +1674,7 @@ pub(crate) struct GraphResources<'data, 'scope, P: Platform> {
 
     worker_slots: Vec<Mutex<WorkerSlot<'data, P>>>,
 
-    errors: Mutex<Vec<Error>>,
+    errors: Mutex<MultiErrorBuilder>,
 
     pub(crate) per_symbol_flags: &'scope AtomicPerSymbolFlags<'scope>,
 
@@ -2551,7 +2552,7 @@ impl<'data, P: Platform> GroupActivationInputs<'data, P> {
                 .with_context(|| format!("Failed to activate {file}"));
 
             if let Err(error) = r {
-                resources.errors.lock().unwrap().push(error);
+                resources.report_error(error);
             }
         }
 
@@ -2586,7 +2587,7 @@ fn traverse_reference_graph<'data, A: Arch>(
         symbol_db,
         output_sections,
         worker_slots,
-        errors: Mutex::new(Vec::new()),
+        errors: Mutex::new(MultiErrorBuilder::new()),
         per_symbol_flags,
         must_keep_sections: output_sections.new_section_map(),
         has_static_tls: AtomicBool::new(false),
@@ -2600,11 +2601,8 @@ fn traverse_reference_graph<'data, A: Arch>(
         queue_initial_group_processing::<A>(groups_in, symbol_db, resources_ref, scope);
     });
 
-    let mut errors: Vec<Error> = take(resources.errors.lock().unwrap().as_mut());
-    // TODO: Figure out good way to report more than one error.
-    if let Some(error) = errors.pop() {
-        return Err(error);
-    }
+    let errors: MultiErrorBuilder = take(&mut resources.errors.lock().unwrap());
+    errors.emit_errors_if_any()?;
 
     let mut group_states = unwrap_worker_states(&resources.worker_slots);
 
@@ -2872,7 +2870,7 @@ impl<P: Platform> LocalWorkQueue<P> {
 
 impl<'data, P: Platform> GraphResources<'data, '_, P> {
     pub(crate) fn report_error(&self, error: Error) {
-        self.errors.lock().unwrap().push(error);
+        self.errors.lock().unwrap().add_error(error);
     }
 
     /// Sends all work in `work` to the worker for `file_id`. Leaves `work` empty so that it can be

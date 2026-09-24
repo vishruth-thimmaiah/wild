@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
-pub struct Error(Box<ErrorPayload>);
+pub struct Error(Vec<ErrorPayload>);
 
 struct ErrorPayload {
     messages: Vec<String>,
@@ -56,9 +56,9 @@ macro_rules! ensure {
 
 impl Error {
     pub fn with_message(msg: impl Into<String>) -> Self {
-        Error(Box::new(ErrorPayload {
+        Error(vec![ErrorPayload {
             messages: vec![msg.into()],
-        }))
+        }])
     }
 
     // We can't implement Display, since we implement From for things that are Display.
@@ -135,7 +135,7 @@ impl Error {
         for cause in err.chain().skip(1) {
             messages.push(cause.to_string());
         }
-        Error(Box::new(ErrorPayload { messages }))
+        Error(vec![ErrorPayload { messages }])
     }
 }
 
@@ -158,7 +158,13 @@ impl<T, E: Into<Error>> Context<T> for Result<T, E> {
             Ok(v) => Ok(v),
             Err(error) => {
                 let mut error: Error = error.into();
-                error.0.messages.push(message.into());
+                if let Some(last) = error.0.last_mut() {
+                    last.messages.push(message.into());
+                } else {
+                    error.0.push(ErrorPayload {
+                        messages: vec![message.into()],
+                    });
+                }
                 Err(error)
             }
         }
@@ -186,7 +192,13 @@ impl<T> Context<T> for Option<T> {
 #[inline(never)]
 fn result_context_error<E: Into<Error>>(error: E, callback: impl FnOnce() -> String) -> Error {
     let mut error: Error = error.into();
-    error.0.messages.push(callback());
+    if let Some(last) = error.0.last_mut() {
+        last.messages.push(callback());
+    } else {
+        error.0.push(ErrorPayload {
+            messages: vec![callback()],
+        });
+    }
     error
 }
 
@@ -196,14 +208,14 @@ fn option_context_error(callback: impl FnOnce() -> String) -> Error {
     Error::with_message(callback())
 }
 
-impl std::fmt::Debug for Error {
+impl std::fmt::Debug for ErrorPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.0.messages.len() == 1 {
-            return write!(f, "{}", self.0.messages[0]);
+        if self.messages.len() == 1 {
+            return write!(f, "{}", self.messages[0]);
         }
 
         let mut first = true;
-        for message in self.0.messages.iter().rev() {
+        for message in self.messages.iter().rev() {
             if first {
                 writeln!(f, "{message}")?;
                 first = false;
@@ -216,11 +228,45 @@ impl std::fmt::Debug for Error {
     }
 }
 
-pub fn report_error(error: &Error) {
-    eprintln!("wild: {}: {error:?}", "error".red());
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for payload in &self.0 {
+            payload.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+pub fn report_error(errors: &Error) {
+    for error in &errors.0 {
+        eprintln!("wild: {}: {error:?}", "error".red());
+    }
 }
 
 pub fn report_error_and_exit(error: &Error) -> ! {
     report_error(error);
     std::process::exit(-1);
+}
+
+#[derive(Default)]
+pub(crate) struct MultiErrorBuilder {
+    errors: Vec<ErrorPayload>,
+}
+
+impl MultiErrorBuilder {
+    pub(crate) fn new() -> Self {
+        Self { errors: Vec::new() }
+    }
+
+    pub(crate) fn add_error(&mut self, error: Error) {
+        self.errors.extend(error.0);
+    }
+
+    pub(crate) fn emit_errors_if_any(self) -> Result {
+        if self.errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error(self.errors))
+        }
+    }
 }
