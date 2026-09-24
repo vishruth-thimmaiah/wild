@@ -30,18 +30,52 @@ use crate::parsing::SymbolPlacement;
 use crate::platform::Args as _;
 use crate::platform::Platform;
 use crate::platform::SectionHeader;
+use bitflags::bitflags;
 use glob::Pattern;
 use hashbrown::HashTable;
 use std::borrow::Cow;
 
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub(crate) struct LinkerManagedSections: u8 {
+        const EH_FRAME = 1 << 0;
+        const NOTE_GNU_PROPERTY = 1 << 1;
+        const RISCV_ATTRIBUTES = 1 << 2;
+        const NOTE_GNU_STACK = 1 << 3;
+    }
+}
+
 pub(crate) struct LayoutRules<'data> {
     pub(crate) section_rules: SectionRules<'data>,
+    pub(crate) linker_managed_outputs: Option<LinkerManagedSections>,
+}
+
+impl<'data> LayoutRules<'data> {
+    pub(crate) fn script_places(&self, outcome: SectionRuleOutcome) -> bool {
+        self.linker_managed_outputs
+            .is_some_and(|outputs| outputs.intersects(get_linker_managed_section(outcome)))
+    }
+
+    pub(crate) fn has_linker_script(&self) -> bool {
+        self.linker_managed_outputs.is_some()
+    }
+}
+
+fn get_linker_managed_section(outcome: SectionRuleOutcome) -> LinkerManagedSections {
+    match outcome {
+        SectionRuleOutcome::EhFrame => LinkerManagedSections::EH_FRAME,
+        SectionRuleOutcome::NoteGnuProperty => LinkerManagedSections::NOTE_GNU_PROPERTY,
+        SectionRuleOutcome::RiscVAttribute => LinkerManagedSections::RISCV_ATTRIBUTES,
+        SectionRuleOutcome::NoteGnuStack => LinkerManagedSections::NOTE_GNU_STACK,
+        _ => LinkerManagedSections::empty(),
+    }
 }
 
 #[derive(Default)]
 pub(crate) struct LayoutRulesBuilder<'data> {
     rules: Vec<SectionRule<'data>>,
     num_location_counters: usize,
+    linker_managed_sections: LinkerManagedSections,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -245,7 +279,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                     match contents_cmd {
                                         ContentsCommand::Matcher(matcher) => {
                                             for pattern in &matcher.input_section_name_patterns {
-                                                self.add_section_rule(SectionRule::new(
+                                                self.add_script_section_rule(SectionRule::new(
                                                     pattern.name,
                                                     matcher.input_file_pattern,
                                                     crate::layout_rules::SectionRuleOutcome::Discard,
@@ -351,7 +385,7 @@ impl<'data> LayoutRulesBuilder<'data> {
                                                 primary_section_id, output_info
                                             );
 
-                                            self.add_section_rule(SectionRule::new(
+                                            self.add_script_section_rule(SectionRule::new(
                                                 pattern.name,
                                                 matcher.input_file_pattern,
                                                 outcome,
@@ -518,18 +552,27 @@ impl<'data> LayoutRulesBuilder<'data> {
     }
 
     pub(crate) fn build<P: Platform>(mut self, args: &P::Args) -> LayoutRules<'data> {
-        let section_rules = if self.rules.is_empty() {
-            SectionRules::from_rules(&P::default_layout_rules(args))
-        } else {
+        let has_linker_script = !self.rules.is_empty();
+        let section_rules = if has_linker_script {
             P::linker_script_rules_pre_build(&mut self);
             SectionRules::from_rules(&self.rules)
+        } else {
+            SectionRules::from_rules(&P::default_layout_rules(args))
         };
 
-        LayoutRules { section_rules }
+        LayoutRules {
+            section_rules,
+            linker_managed_outputs: has_linker_script.then_some(self.linker_managed_sections),
+        }
     }
 
     pub(crate) fn add_section_rule(&mut self, rule: SectionRule<'data>) {
         self.rules.push(rule);
+    }
+
+    fn add_script_section_rule(&mut self, rule: SectionRule<'data>) {
+        self.linker_managed_sections |= get_linker_managed_section(rule.outcome);
+        self.add_section_rule(rule);
     }
 }
 
