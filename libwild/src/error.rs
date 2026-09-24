@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
+#[expect(clippy::box_collection)]
 pub struct Error(Box<Vec<ErrorPayload>>);
 
 struct ErrorPayload {
