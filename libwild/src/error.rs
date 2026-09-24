@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
-pub struct Error(Vec<ErrorPayload>);
+pub struct Error(Box<Vec<ErrorPayload>>);
 
 struct ErrorPayload {
     messages: Vec<String>,
@@ -56,9 +56,9 @@ macro_rules! ensure {
 
 impl Error {
     pub fn with_message(msg: impl Into<String>) -> Self {
-        Error(vec![ErrorPayload {
+        Error(Box::new(vec![ErrorPayload {
             messages: vec![msg.into()],
-        }])
+        }]))
     }
 
     // We can't implement Display, since we implement From for things that are Display.
@@ -135,7 +135,7 @@ impl Error {
         for cause in err.chain().skip(1) {
             messages.push(cause.to_string());
         }
-        Error(vec![ErrorPayload { messages }])
+        Error(Box::new(vec![ErrorPayload { messages }]))
     }
 }
 
@@ -211,7 +211,7 @@ fn option_context_error(callback: impl FnOnce() -> String) -> Error {
 impl std::fmt::Debug for ErrorPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.messages.len() == 1 {
-            return write!(f, "{}", self.messages[0]);
+            return writeln!(f, "{}", self.messages[0]);
         }
 
         let mut first = true;
@@ -230,7 +230,7 @@ impl std::fmt::Debug for ErrorPayload {
 
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for payload in &self.0 {
+        for payload in &*self.0 {
             payload.fmt(f)?;
         }
         Ok(())
@@ -238,8 +238,8 @@ impl std::fmt::Debug for Error {
 }
 
 pub fn report_error(errors: &Error) {
-    for error in &errors.0 {
-        eprintln!("wild: {}: {error:?}", "error".red());
+    for error in &*errors.0 {
+        eprint!("wild: {}: {error:?}", "error".red());
     }
 }
 
@@ -259,14 +259,62 @@ impl MultiErrorBuilder {
     }
 
     pub(crate) fn add_error(&mut self, error: Error) {
-        self.errors.extend(error.0);
+        self.errors.extend(*error.0);
     }
 
     pub(crate) fn emit_errors_if_any(self) -> Result {
         if self.errors.is_empty() {
             Ok(())
         } else {
-            Err(Error(self.errors))
+            Err(Error(Box::new(self.errors)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chained_error(main: &'static str, context1: &'static str, context2: &'static str) -> Error {
+        let mut result: Result = Err(Error::with_message(main));
+        result = Err(result.context(context1).unwrap_err());
+        result.context(context2).unwrap_err()
+    }
+
+    #[test]
+    fn multiple_messages_without_causes_each_on_own_line() {
+        let mut builder = MultiErrorBuilder::new();
+        builder.add_error(Error::with_message("first"));
+        builder.add_error(Error::with_message("second"));
+        builder.add_error(Error::with_message("third"));
+        let error = builder.emit_errors_if_any().unwrap_err();
+        assert_eq!(error.to_string(), "first\nsecond\nthird\n");
+    }
+
+    #[test]
+    fn multiple_messages_with_causes_each_on_own_line() {
+        let mut builder = MultiErrorBuilder::new();
+        builder.add_error(chained_error(
+            "failed to load foo",
+            "while linking",
+            "first error",
+        ));
+        builder.add_error(chained_error(
+            "failed to load bar",
+            "while linking",
+            "second error",
+        ));
+        builder.add_error(chained_error(
+            "failed to load baz",
+            "while linking",
+            "third error",
+        ));
+        let error = builder.emit_errors_if_any().unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "first error\n  Caused by:\n    while linking\n    failed to load foo\n\
+            second error\n  Caused by:\n    while linking\n    failed to load bar\n\
+            third error\n  Caused by:\n    while linking\n    failed to load baz\n"
+        );
     }
 }
