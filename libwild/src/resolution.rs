@@ -108,8 +108,7 @@ impl<'data, P: Platform> Resolver<'data, P> {
             &mut symbol_db.section_part_ids,
             output_sections,
             symbol_db.args,
-            layout_rules,
-        )?;
+        );
 
         let start_stop_sections =
             P::NEEDS_START_STOP_SECTION_GC.then(|| output_sections.new_section_map());
@@ -862,8 +861,7 @@ fn assign_section_ids<'data, P: Platform>(
     section_part_ids: &mut [PartId],
     output_sections: &mut OutputSections<'data, P>,
     args: &P::Args,
-    layout_rules: &LayoutRules<'data>,
-) -> Result {
+) {
     timing_phase!("Assign section IDs");
 
     // An optimised path for partial linking to avoid allocating too many OutputSectionIds. We skip
@@ -877,14 +875,7 @@ fn assign_section_ids<'data, P: Platform>(
                 .any(|file| matches!(file, ResolvedFile::LinkerScript(_)))
         })
     {
-        assign_section_ids_partial(
-            resolved,
-            section_part_ids,
-            output_sections,
-            args,
-            layout_rules,
-        )?;
-        return Ok(());
+        return assign_section_ids_partial(resolved, section_part_ids, output_sections, args);
     }
 
     for group in resolved {
@@ -906,8 +897,6 @@ fn assign_section_ids<'data, P: Platform>(
             }
         }
     }
-
-    Ok(())
 }
 
 fn check_orphan_placement<P: Platform>(
@@ -916,6 +905,8 @@ fn check_orphan_placement<P: Platform>(
     section: &impl std::fmt::Display,
 ) -> Result<bool> {
     match args.orphan_handling() {
+        OrphanHandling::Place => {}
+        OrphanHandling::Discard => return Ok(true),
         OrphanHandling::Warn => {
             args.warning(format!(
                 "orphan section '{section}' from '{input_file}' being placed in section '{section}'",
@@ -924,8 +915,6 @@ fn check_orphan_placement<P: Platform>(
         OrphanHandling::Error => {
             bail!("unplaced orphan section '{section}' from '{input_file}'");
         }
-        OrphanHandling::Discard => return Ok(true),
-        OrphanHandling::Place => {}
     }
     Ok(false)
 }
@@ -998,8 +987,7 @@ fn assign_section_ids_partial<'data, P: Platform>(
     section_part_ids: &mut [PartId],
     output_sections: &mut OutputSections<'data, P>,
     args: &<P as Platform>::Args,
-    layout_rules: &LayoutRules<'data>,
-) -> Result {
+) {
     // Where two or more input sections have the same name, we assign OutputSectionIds as per normal
     // so that those input sections can be correctly merged. For input sections with unique names,
     // no merging is needed, so we handle those separately so as to avoid the overheads associated
@@ -1062,8 +1050,6 @@ fn assign_section_ids_partial<'data, P: Platform>(
         }
     }
 
-    let mut error_builder = error::MultiErrorBuilder::new();
-
     // Allocate non-singleton sections.
     for group in resolved {
         for file in &group.files {
@@ -1074,31 +1060,10 @@ fn assign_section_ids_partial<'data, P: Platform>(
                     if *part_id != singletons_id.part_id_with_alignment::<P>(custom.alignment) {
                         *part_id = output_sections.get_or_create_custom_section_part(args, custom);
                     }
-                    let section_header = object.common.object.section(custom.index).unwrap();
-                    let section_name = custom.identity.section_name();
-                    if args.orphan_handling() != OrphanHandling::Place
-                        && matches!(
-                            layout_rules.section_rules.lookup::<P>(
-                                section_name.bytes(),
-                                None,
-                                section_header
-                            ),
-                            SectionRuleOutcome::Custom
-                        )
-                    {
-                        let _ = check_orphan_placement::<P>(
-                            args,
-                            &object.common.input,
-                            &custom.identity.section_name(),
-                        )
-                        .map_err(|e| error_builder.add_error(e));
-                    }
                 }
             }
         }
     }
-
-    error_builder.emit_errors_if_any()
 }
 
 fn is_partial_link_singleton_candidate<P: Platform>(
@@ -1615,13 +1580,7 @@ fn resolve_section<'data, P: Platform>(
             .lookup::<P>(section_name, file_name, input_section)
     };
 
-    if !matches!(
-        rule_outcome,
-        SectionRuleOutcome::Section(_)
-            | SectionRuleOutcome::SortedSection(_)
-            | SectionRuleOutcome::Discard
-    ) && layout_rules.has_linker_script()
-        && !layout_rules.script_places(rule_outcome)
+    if layout_rules.is_orphan::<P>(section_name, file_name, input_section)
         && check_orphan_placement::<P>(
             args,
             &obj.common.input,
