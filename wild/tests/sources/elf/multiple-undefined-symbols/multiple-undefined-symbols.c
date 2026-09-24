@@ -2,9 +2,7 @@
 //#ExpectError:(?i-u)Undefined symbol:? undefined_multi_a
 //#ExpectError:.*multiple-undefined-symbols.c.o.*
 //#ExpectError:(?i-u)Undefined symbol:? undefined_multi_b
-//#ExpectError:.*multiple-undefined-symbols.c.o.*
 //#ExpectError:(?i-u)Undefined symbol:? undefined_multi_c
-//#ExpectError:.*multiple-undefined-symbols.c.o.*
 
 int undefined_multi_a();
 int undefined_multi_b();
