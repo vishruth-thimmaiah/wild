@@ -67,6 +67,8 @@ use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::iter::ParallelIterator;
 use std::hash::BuildHasher as _;
+use std::mem::take;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -474,6 +476,7 @@ fn resolve_sections<'data, P: Platform>(
     let mut per_group_section_writers =
         section_part_ids_writer.take_shards(group_section_counts.into_iter());
 
+    let error_builder = Mutex::new(error::MultiErrorBuilder::new());
     groups
         .par_iter_mut()
         .zip(per_group_section_writers.par_iter_mut())
@@ -496,6 +499,7 @@ fn resolve_sections<'data, P: Platform>(
                                 allocator,
                                 &loaded_metrics,
                                 layout_rules,
+                                &error_builder,
                             )?;
                             obj.sections = sections;
                             for part_id in part_ids {
@@ -514,6 +518,8 @@ fn resolve_sections<'data, P: Platform>(
                 Ok(())
             },
         )?;
+    let errors: error::MultiErrorBuilder = take(&mut error_builder.lock().unwrap());
+    errors.emit_errors_if_any()?;
 
     for shard in per_group_section_writers {
         section_part_ids_writer.return_shard(shard);
@@ -1504,6 +1510,7 @@ fn resolve_sections_for_object<'data, P: Platform>(
     allocator: &bumpalo_herd::Member<'data>,
     loaded_metrics: &LoadedMetrics,
     layout_rules: &LayoutRules,
+    error_builder: &Mutex<error::MultiErrorBuilder>,
 ) -> Result<(Vec<SectionSlot>, Vec<PartId>)> {
     // Note, we build up the collection with push rather than collect because at the time of
     // writing, object's `SectionTable::enumerate` isn't an exact-size iterator, so using collect
@@ -1511,7 +1518,6 @@ fn resolve_sections_for_object<'data, P: Platform>(
     let mut sections = Vec::with_capacity(obj.common.object.num_sections());
     let mut section_part_ids = Vec::with_capacity(obj.common.object.num_sections());
     let mut executable_bytes: u64 = 0;
-    let mut error_builder = error::MultiErrorBuilder::new();
     for (input_section_index, input_section) in obj.common.object.enumerate_sections() {
         let section_size = obj.common.object.section_size(input_section).unwrap_or(0);
         if input_section.is_executable() {
@@ -1525,12 +1531,11 @@ fn resolve_sections_for_object<'data, P: Platform>(
             allocator,
             loaded_metrics,
             layout_rules,
-            &mut error_builder,
+            &error_builder,
         )?;
         sections.push(slot);
         section_part_ids.push(part_id);
     }
-    error_builder.emit_errors_if_any()?;
     obj.executable_bytes = executable_bytes;
     Ok((sections, section_part_ids))
 }
@@ -1544,7 +1549,7 @@ fn resolve_section<'data, P: Platform>(
     allocator: &bumpalo_herd::Member<'data>,
     loaded_metrics: &LoadedMetrics,
     layout_rules: &LayoutRules,
-    error_builder: &mut error::MultiErrorBuilder,
+    error_builder: &Mutex<error::MultiErrorBuilder>,
 ) -> Result<(SectionSlot, PartId)> {
     let section_name = obj
         .common
@@ -1586,7 +1591,7 @@ fn resolve_section<'data, P: Platform>(
 
     if layout_rules.is_orphan::<P>(section_name, file_name, input_section)
         && check_orphan_placement::<P>(args, &obj.common.input, section_name)
-            .map_err(|e| error_builder.add_error(e))
+            .map_err(|e| error_builder.lock().unwrap().add_error(e))
             .is_ok_and(|is_discarded| is_discarded)
     {
         return Ok((SectionSlot::Discard, crate::part_id::UNMAPPED));
