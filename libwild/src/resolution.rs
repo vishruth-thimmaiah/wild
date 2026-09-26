@@ -902,18 +902,22 @@ fn assign_section_ids<'data, P: Platform>(
 fn check_orphan_placement<P: Platform>(
     args: &P::Args,
     input_file: &impl std::fmt::Display,
-    section: &impl std::fmt::Display,
+    section: &[u8],
 ) -> Result<bool> {
     match args.orphan_handling() {
         OrphanHandling::Place => {}
         OrphanHandling::Discard => return Ok(true),
         OrphanHandling::Warn => {
             args.warning(format!(
-                "orphan section '{section}' from '{input_file}' being placed in section '{section}'",
+                "orphan section '{}' from '{input_file}' being placed in section '{0}'",
+                String::from_utf8_lossy(section),
             ));
         }
         OrphanHandling::Error => {
-            bail!("unplaced orphan section '{section}' from '{input_file}'");
+            bail!(
+                "unplaced orphan section '{}' from '{input_file}'",
+                String::from_utf8_lossy(section)
+            );
         }
     }
     Ok(false)
@@ -1581,13 +1585,9 @@ fn resolve_section<'data, P: Platform>(
     };
 
     if layout_rules.is_orphan::<P>(section_name, file_name, input_section)
-        && check_orphan_placement::<P>(
-            args,
-            &obj.common.input,
-            &String::from_utf8_lossy(section_name),
-        )
-        .map_err(|e| error_builder.add_error(e))
-        .is_ok_and(|is_discarded| is_discarded)
+        && check_orphan_placement::<P>(args, &obj.common.input, section_name)
+            .map_err(|e| error_builder.add_error(e))
+            .is_ok_and(|is_discarded| is_discarded)
     {
         return Ok((SectionSlot::Discard, crate::part_id::UNMAPPED));
     }

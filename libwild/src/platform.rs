@@ -1300,6 +1300,8 @@ pub(crate) trait SectionHeader: std::fmt::Debug + Send + Sync + 'static {
 
     /// Returns whether the section has no contents in the file (zero initialised).
     fn is_no_bits(&self) -> bool;
+
+    fn is_null(&self) -> bool;
 }
 
 pub(crate) trait SectionType:

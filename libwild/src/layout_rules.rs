@@ -46,7 +46,7 @@ impl<'data> LayoutRules<'data> {
         file_name: Option<&[u8]>,
         section_header: &impl SectionHeader,
     ) -> bool {
-        if section_header.should_exclude() {
+        if section_header.should_exclude() | section_header.is_null() {
             return false;
         }
 

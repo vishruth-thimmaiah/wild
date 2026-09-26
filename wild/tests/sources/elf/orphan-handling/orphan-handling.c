@@ -117,6 +117,23 @@
 //#LinkArgs:--orphan-handling=discard
 //#NoSection:.orphan_section
 
+//#AbstractConfig:no-orphans:common
+// AArch64 emits the .ARM.attributes section, which is currently not handled by wild, and is treated
+// as an orphaned section here.
+//#SkipArch:aarch64,riscv64
+
+//#Config:no-orphans-error:no-orphans
+//#CompArgs:-DNO_ORPHAN_VAR
+//#LinkArgs:--orphan-handling=error
+
+//#Config:no-orphans-warn:no-orphans
+//#CompArgs:-DNO_ORPHAN_VAR
+//#LinkArgs:--orphan-handling=warn
+
+//#Config:no-orphans-discard:no-orphans
+//#CompArgs:-DNO_ORPHAN_VAR
+//#LinkArgs:--orphan-handling=discard
+
 #include "../common/runtime.h"
 
 #ifndef NO_ORPHAN_VAR
