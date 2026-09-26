@@ -119,9 +119,9 @@
 
 //#AbstractConfig:no-orphans:common
 //#CompArgs:-Wa,-mx86-used-note=no
-// AArch64 emits the .ARM.attributes section, which is currently not handled by wild, and is treated
-// as an orphaned section here.
-//#SkipArch:aarch64,riscv64
+// Some other architectures emit platform specific sections which might not be handled by wild, such
+// as .ARM.attributes on AArch64.
+//#Arch:x86_64
 
 //#Config:no-orphans-error:no-orphans
 //#CompArgs:-DNO_ORPHAN_VAR
