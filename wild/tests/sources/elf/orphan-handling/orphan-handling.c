@@ -118,6 +118,7 @@
 //#NoSection:.orphan_section
 
 //#AbstractConfig:no-orphans:common
+//#CompArgs:-Wa,-mx86-used-note=no
 // AArch64 emits the .ARM.attributes section, which is currently not handled by wild, and is treated
 // as an orphaned section here.
 //#SkipArch:aarch64,riscv64
