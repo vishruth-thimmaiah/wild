@@ -1531,7 +1531,7 @@ fn resolve_sections_for_object<'data, P: Platform>(
             allocator,
             loaded_metrics,
             layout_rules,
-            &error_builder,
+            error_builder,
         )?;
         sections.push(slot);
         section_part_ids.push(part_id);
