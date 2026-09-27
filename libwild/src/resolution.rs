@@ -1589,7 +1589,8 @@ fn resolve_section<'data, P: Platform>(
             .lookup::<P>(section_name, file_name, input_section)
     };
 
-    if layout_rules.is_orphan::<P>(section_name, file_name, input_section)
+    if args.orphan_handling() != OrphanHandling::Place
+        && layout_rules.is_orphan::<P>(section_name, file_name, input_section)
         && check_orphan_placement::<P>(args, &obj.common.input, section_name)
             .map_err(|e| error_builder.lock().unwrap().add_error(e))
             .is_ok_and(|is_discarded| is_discarded)
