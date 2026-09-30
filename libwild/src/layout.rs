@@ -612,7 +612,7 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
         if redirect.is_provide() {
             let canonical_symbol_id =
                 canonical_symbol_id.ok_or_else(|| redirect.missing_target(def_info.name))?;
-            if !resolutions[canonical_symbol_id.as_usize()].is_some() {
+            if resolutions[canonical_symbol_id.as_usize()].is_none() {
                 return Ok(());
             }
         }
@@ -1407,8 +1407,9 @@ impl<'data, P: Platform> SymbolRequestHandler<'data, P> for LinkerScriptLayoutSt
     ) -> Result {
         let offset = self.symbol_id_range.id_to_offset(symbol_id);
         let def_info = &self.internal_symbols.symbol_definitions[offset];
-        self.internal_symbols
-            .activate_symbol_def::<A>(common, symbol_id, def_info, resources, queue, scope)
+        InternalSymbols::activate_symbol_def::<A>(
+            common, symbol_id, def_info, resources, queue, scope,
+        )
     }
 }
 
@@ -3912,14 +3913,13 @@ impl<'data, P: Platform> InternalSymbols<'data, P> {
                 continue;
             }
 
-            self.activate_symbol_def::<A>(common, symbol_id, def_info, resources, queue, scope)?;
+            Self::activate_symbol_def::<A>(common, symbol_id, def_info, resources, queue, scope)?;
         }
 
         Ok(())
     }
 
     fn activate_symbol_def<'scope, A: Arch<Platform = P>>(
-        &self,
         common: &mut CommonGroupState<'data, P>,
         symbol_id: SymbolId,
         def_info: &InternalSymDefInfo<'data, P>,
