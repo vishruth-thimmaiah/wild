@@ -600,6 +600,23 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
     resolved_location_counters: &[ResolvedLocationCounter],
 ) -> Result {
     if let SymbolPlacement::Redirect(redirect) = &def_info.placement {
+        let canonical_symbol_id = (!def_info.name.is_empty())
+            .then(|| {
+                symbol_db
+                    .get_unversioned(&UnversionedSymbolName::prehashed(def_info.name))
+                    .map(|id| symbol_db.definition(id))
+                    .ok_or_else(|| redirect.missing_target(def_info.name))
+            })
+            .transpose()?;
+
+        if redirect.is_provide() {
+            let canonical_symbol_id =
+                canonical_symbol_id.ok_or_else(|| redirect.missing_target(def_info.name))?;
+            if !resolutions[canonical_symbol_id.as_usize()].is_some() {
+                return Ok(());
+            }
+        }
+
         let value = crate::expression_eval::evaluate_expression(
             &redirect.expression,
             &redirect.loc,
@@ -636,14 +653,9 @@ fn update_defsym_symbol_resolution<'data, P: Platform>(
             },
         )?;
 
-        if def_info.name.is_empty() {
+        let Some(canonical_symbol_id) = canonical_symbol_id else {
             return Ok(());
-        }
-
-        let canonical_symbol_id = symbol_db
-            .get_unversioned(&UnversionedSymbolName::prehashed(def_info.name))
-            .map(|id| symbol_db.definition(id))
-            .ok_or_else(|| redirect.missing_target(def_info.name))?;
+        };
 
         let resolution = resolutions[canonical_symbol_id.as_usize()]
             .as_mut()
@@ -1387,13 +1399,16 @@ impl<P: Platform> HandlerData for LinkerScriptLayoutState<'_, P> {
 impl<'data, P: Platform> SymbolRequestHandler<'data, P> for LinkerScriptLayoutState<'data, P> {
     fn load_symbol<'scope, A: Arch<Platform = P>>(
         &mut self,
-        _common: &mut CommonGroupState<'data, P>,
-        _symbol_id: SymbolId,
-        _resources: &GraphResources<'data, 'scope, P>,
-        _queue: &mut LocalWorkQueue<P>,
-        _scope: &Scope<'scope>,
+        common: &mut CommonGroupState<'data, P>,
+        symbol_id: SymbolId,
+        resources: &'scope GraphResources<'data, 'scope, P>,
+        queue: &mut LocalWorkQueue<P>,
+        scope: &Scope<'scope>,
     ) -> Result {
-        Ok(())
+        let offset = self.symbol_id_range.id_to_offset(symbol_id);
+        let def_info = &self.internal_symbols.symbol_definitions[offset];
+        self.internal_symbols
+            .activate_symbol_def::<A>(common, symbol_id, def_info, resources, queue, scope)
     }
 }
 
@@ -3039,7 +3054,11 @@ impl<'data, P: Platform> FileLayoutState<'data, P> {
                     state, common, symbol_id, resources, queue, scope,
                 )?;
             }
-            FileLayoutState::LinkerScript(_) => {}
+            FileLayoutState::LinkerScript(state) => {
+                SymbolRequestHandler::load_symbol::<A>(
+                    state, common, symbol_id, resources, queue, scope,
+                )?;
+            }
             FileLayoutState::StubLibrary(state) => {
                 P::load_stub_library_symbol(state, symbol_id)?;
             }
@@ -3882,57 +3901,67 @@ impl<'data, P: Platform> InternalSymbols<'data, P> {
         scope: &Scope<'scope>,
     ) -> Result {
         for (offset, def_info) in self.symbol_definitions.iter().enumerate() {
+            // PROVIDE symbols are defined only if referenced.
+            if matches!(&def_info.placement, SymbolPlacement::Redirect(redirect) if redirect.is_provide())
+            {
+                continue;
+            }
+
             let symbol_id = self.start_symbol_id.add_usize(offset);
             if !resources.symbol_db.is_canonical(symbol_id) {
                 continue;
             }
 
-            // Mark the section referenced by this symbol so that empty sections defined by the
-            // linker script are still emitted. Symbols defined within an output-section body keep
-            // that section alive. Symbols between output sections instead belong to the preceding
-            // emitted section, so they must not retain an otherwise discarded section.
-            let section_id = match &def_info.placement {
-                SymbolPlacement::Redirect(Redirect {
-                    loc:
-                        SymbolLoc::SectionStartRelative(section_id)
-                        | SymbolLoc::SectionEndRelative(section_id),
-                    ..
-                }) => Some(*section_id),
-                _ => None,
-            };
-            if let Some(section_id) = section_id {
-                resources
-                    .must_keep_sections
-                    .get(section_id)
-                    .fetch_or(true, atomic::Ordering::Relaxed);
-            }
+            self.activate_symbol_def::<A>(common, symbol_id, def_info, resources, queue, scope)?;
+        }
 
-            // PROVIDE_HIDDEN symbols should not be exported to dynsym.
-            if def_info.symbol.is_hidden() {
-                continue;
-            }
+        Ok(())
+    }
 
-            match &def_info.placement {
-                SymbolPlacement::Redirect(redirect) => {
-                    load_redirect_referenced_symbols::<A>(
-                        resources, queue, scope, symbol_id, redirect,
-                    );
-                }
-                _ => {}
-            }
-
-            if def_info.name.is_empty() {
-                continue;
-            }
-
+    fn activate_symbol_def<'scope, A: Arch<Platform = P>>(
+        &self,
+        common: &mut CommonGroupState<'data, P>,
+        symbol_id: SymbolId,
+        def_info: &InternalSymDefInfo<'data, P>,
+        resources: &'scope GraphResources<'data, 'scope, P>,
+        queue: &mut LocalWorkQueue<P>,
+        scope: &Scope<'scope>,
+    ) -> Result {
+        // Mark the section referenced by this symbol so that empty sections defined by the
+        // linker script are still emitted. Symbols defined within an output-section body keep
+        // that section alive. Symbols between output sections instead belong to the preceding
+        // emitted section, so they must not retain an otherwise discarded section.
+        let section_id = match &def_info.placement {
+            SymbolPlacement::Redirect(Redirect {
+                loc:
+                    SymbolLoc::SectionStartRelative(section_id)
+                    | SymbolLoc::SectionEndRelative(section_id),
+                ..
+            }) => Some(*section_id),
+            _ => None,
+        };
+        if let Some(section_id) = section_id {
             resources
-                .per_symbol_flags
-                .get_atomic(symbol_id)
-                .fetch_or(ValueFlags::EXPORT_DYNAMIC);
+                .must_keep_sections
+                .get(section_id)
+                .fetch_or(true, atomic::Ordering::Relaxed);
+        }
 
-            if resources.symbol_db.output_kind.needs_dynsym() {
-                export_dynamic(common, symbol_id, resources.symbol_db)?;
-            }
+        if let SymbolPlacement::Redirect(redirect) = &def_info.placement {
+            load_redirect_referenced_symbols::<A>(resources, queue, scope, symbol_id, redirect);
+        }
+
+        if def_info.symbol.is_hidden() || def_info.name.is_empty() {
+            return Ok(());
+        }
+
+        let old_flags = resources
+            .per_symbol_flags
+            .get_atomic(symbol_id)
+            .fetch_or(ValueFlags::EXPORT_DYNAMIC);
+
+        if !old_flags.needs_export_dynamic() && resources.symbol_db.output_kind.needs_dynsym() {
+            export_dynamic(common, symbol_id, resources.symbol_db)?;
         }
 
         Ok(())
