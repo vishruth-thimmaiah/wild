@@ -3,6 +3,7 @@
 //#Shared:shared.c
 //#CompSoArgs:-fPIC
 //#AugmentLinkerScript:provide.ld
+//#SkipArch: ppc64le
 //#LinkArgs:-no-pie
 //#ExpectDynSym:provided address=42
 //#NoSym:unused_provided
