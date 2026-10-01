@@ -6,6 +6,9 @@
 //#LinkArgs:-no-pie
 //#ExpectDynSym:provided address=42
 //#NoSym:unused_provided
+//#DiffIgnore:.dynamic.DT_NEEDED
+//#DiffIgnore:.dynamic.DT_RELA
+//#DiffIgnore:.dynamic.DT_RELAENT
 
 #include "../common/runtime.h"
 
