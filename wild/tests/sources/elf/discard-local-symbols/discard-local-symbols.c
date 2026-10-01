@@ -25,7 +25,7 @@
 asm(".Ltmp0:");
 
 static int unused = 4;
-static int local_func(void) { return 42; }
+static int __attribute__((used, noinline)) local_func(void) { return 42; }
 
 void _start(void) {
   runtime_init();
