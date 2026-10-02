@@ -786,6 +786,13 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
         crate::compression::maybe_compress_debug_sections_elf::<C, A>(layout)
     }
 
+    fn maybe_only_keep_debug<'data, A: Arch<Platform = Self>>(
+        layout: &mut layout::Layout<'data, Self>,
+    ) -> Result {
+        crate::only_keep_debug::maybe_only_keep_debug_elf::<C>(layout);
+        Ok(())
+    }
+
     fn maybe_init_linker_plugin<'data>(
         args: &'data Self::Args,
         linker_plugin_arena: &'data colosseum::sync::Arena<crate::linker_plugins::LoadedPlugin>,
@@ -1852,6 +1859,7 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
         state: &mut crate::elf::EpilogueLayoutExt,
         current_sizes: &OutputSectionPartMap<u64>,
         extra_sizes: &mut OutputSectionPartMap<u64>,
+        _output_sections: &crate::output_section_id::OutputSections<Self>,
         dynamic_symbol_defs: &[DynamicSymbolDefinition<Self>],
         format_specific: &Self::FinaliseSizesExt<'_>,
         args: &ElfArgs,

@@ -505,6 +505,7 @@ pub fn compute<'data, P: Platform, A: Arch<Platform = P>, F: FileSystem>(
     };
 
     P::maybe_compress_debug_sections::<A>(&mut layout)?;
+    P::maybe_only_keep_debug::<A>(&mut layout)?;
 
     output.set_size(compute_total_file_size(&layout.section_layouts));
 
@@ -1787,6 +1788,31 @@ impl<'data, P: Platform> Layout<'data, P> {
         self.symbol_db.args
     }
 
+    /// Rebuilds merged section records and program-header file ranges from the current section file
+    /// offsets. Debug compression updates those offsets after the initial layout pass.
+    pub(crate) fn refresh_layouts_after_debug_compression(&mut self) -> Result {
+        self.merged_section_layouts =
+            merge_secondary_parts(&self.output_sections, &self.section_layouts);
+
+        let header_info = {
+            let header_info = &self.prelude().header_info;
+            HeaderInfo {
+                num_output_sections_with_content: header_info.num_output_sections_with_content,
+                partial_link_section_name_bytes: header_info.partial_link_section_name_bytes,
+                active_segment_ids: header_info.active_segment_ids.clone(),
+            }
+        };
+        self.segment_layouts = compute_segment_layout::<P>(
+            &self.section_layouts,
+            &self.output_sections,
+            &self.output_order,
+            &self.program_segments,
+            &header_info,
+            self.args(),
+        )?;
+        Ok(())
+    }
+
     pub(crate) fn symbol_debug<'layout>(
         &'layout self,
         symbol_id: SymbolId,
@@ -2365,7 +2391,12 @@ fn compute_total_section_part_sizes<'data, P: Platform>(
         unreachable!();
     };
 
-    epilogue.apply_late_size_adjustments(&mut last_group.common, &mut total_sizes, resources)?;
+    epilogue.apply_late_size_adjustments(
+        &mut last_group.common,
+        &mut total_sizes,
+        output_sections,
+        resources,
+    )?;
 
     let first_group = group_states.first_mut().unwrap();
     let Some(FileLayoutState::Prelude(prelude)) = first_group.files.first_mut() else {
@@ -4231,6 +4262,7 @@ impl<'data, P: Platform> EpilogueLayoutState<P> {
         &mut self,
         common: &mut CommonGroupState<'data, P>,
         total_sizes: &mut OutputSectionPartMap<u64>,
+        output_sections: &OutputSections<P>,
         resources: &FinaliseSizesResources<'data, '_, P>,
     ) -> Result {
         let mut extra_sizes = common.mem_sizes.new_empty_like();
@@ -4241,6 +4273,7 @@ impl<'data, P: Platform> EpilogueLayoutState<P> {
             &mut self.format_specific,
             total_sizes,
             &mut extra_sizes,
+            output_sections,
             resources.dynamic_symbol_definitions,
             resources.format_specific,
             resources.symbol_db.args,

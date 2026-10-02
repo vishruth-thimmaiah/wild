@@ -425,6 +425,12 @@ pub(crate) trait Platform:
         Ok(())
     }
 
+    fn maybe_only_keep_debug<'data, A: Arch<Platform = Self>>(
+        _layout: &mut Layout<'data, Self>,
+    ) -> Result {
+        Ok(())
+    }
+
     /// Possibly initialise a linker plugin if the platform supports it and the arguments specifies
     /// that one should be used.
     fn maybe_init_linker_plugin<'data>(
@@ -766,6 +772,7 @@ pub(crate) trait Platform:
         _state: &mut Self::EpilogueLayoutExt,
         _current_sizes: &OutputSectionPartMap<u64>,
         _extra_sizes: &mut OutputSectionPartMap<u64>,
+        _output_sections: &OutputSections<Self>,
         _dynamic_symbol_defs: &[DynamicSymbolDefinition<Self>],
         _format_specific: &Self::FinaliseSizesExt<'_>,
         _args: &Self::Args,

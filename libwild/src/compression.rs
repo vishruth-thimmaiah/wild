@@ -472,27 +472,81 @@ fn update_allocation_sizes<P: Platform>(layout: &mut Layout<P>) {
     }
 }
 
-fn update_file_offset<P: Platform>(layout: &mut Layout<P>) -> Result {
-    timing_phase!("Update file offsets post-compression");
+/// Full recalculation of file offsets AND segment sizes.
+///
+/// Used by `--only-keep-debug` where alloc sections are zeroed, causing segments to compact in the
+/// file. Unlike `update_file_offset`, this function updates `segment_layouts.sizes.file_offset`
+/// and `file_size` instead of bailing when they change.
+///
+/// Segment `file_size` invariant (mirrors `compute_segment_layout`):
+///   `seg.file_size = max(s.file_offset + s.file_size for s in seg) - seg.file_offset`
+/// Alignment padding between sections inside a segment is included because we track a running
+/// `seg_file_end` via `max()` rather than a simple sum.
+///
+/// Segment events in `output_order` can be nested or interleaved (e.g. NOTE or GNU_RELRO
+/// segments inside a LOAD segment), so we use a stack of open segments rather than a single
+/// cursor. Each `SegmentStart` pushes onto the stack, each `Section` updates all open segments,
+/// and each `SegmentEnd` pops the matching entry and finalises the segment's `file_size`.
+pub(crate) fn recalculate_file_offsets<P: Platform>(layout: &mut Layout<P>) {
+    let id_to_idx: std::collections::HashMap<crate::program_segments::ProgramSegmentId, usize> =
+        layout
+            .segment_layouts
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(idx, seg)| (seg.id, idx))
+            .collect();
 
-    // Recalculate file offsets since we changed file_sizes
-    let mut segments = layout.segment_layouts.segments.iter().peekable();
-    let mut file_offset = 0;
+    // Stack of (segment_index, seg_file_end) for currently open segments.
+    let mut seg_stack: Vec<(usize, usize)> = Vec::new();
+    let mut file_offset = 0usize;
+
     for event in &layout.output_order {
         match event {
-            OrderEvent::SegmentStart(program_segment_id)
-                if segments.peek().is_some_and(|s| s.id == program_segment_id) =>
-            {
-                let segment_layout = segments.next().unwrap();
-                if segment_layout.sizes.file_offset != file_offset {
-                    bail!(
-                        "Segment moved due to debug info compression 0x{:x} -> 0x{:x}",
-                        segment_layout.sizes.file_offset,
-                        file_offset,
-                    );
+            OrderEvent::SegmentStart(segment_id) => {
+                if let Some(&idx) = id_to_idx.get(&segment_id) {
+                    layout.segment_layouts.segments[idx].sizes.file_offset = file_offset;
+                    seg_stack.push((idx, file_offset));
+                }
+            }
+            OrderEvent::SegmentEnd(segment_id) => {
+                if let Some(&idx) = id_to_idx.get(&segment_id)
+                    && let Some(pos) = seg_stack.iter().rposition(|(i, _)| *i == idx)
+                {
+                    let (_, seg_file_end) = seg_stack.remove(pos);
+                    let seg = &mut layout.segment_layouts.segments[idx];
+                    seg.sizes.file_size = seg_file_end.saturating_sub(seg.sizes.file_offset);
                 }
             }
             OrderEvent::Section(section_id) => {
+                // If all parts have file_size == 0 (e.g. for --only-keep-debug), don't let
+                // alignment padding inflate file_offset or segment file_size.
+                let total_part_file_size: usize = section_id
+                    .parts::<P>()
+                    .map(|part_id| layout.section_part_layouts.get(part_id).file_size)
+                    .sum();
+
+                if total_part_file_size == 0 {
+                    let section_layout = layout.section_layouts.get_mut(section_id);
+                    section_layout.file_offset = file_offset;
+                    section_layout.file_size = 0;
+
+                    let merge_target = layout
+                        .output_sections
+                        .merge_target(section_id)
+                        .unwrap_or(section_id);
+                    let merged_section_layout = layout.merged_section_layouts.get_mut(merge_target);
+                    if merge_target == section_id {
+                        merged_section_layout.file_offset = file_offset;
+                    }
+                    merged_section_layout.file_size = 0;
+
+                    for part_id in section_id.parts::<P>() {
+                        layout.section_part_layouts.get_mut(part_id).file_offset = file_offset;
+                    }
+                    continue;
+                }
+
                 let section_layout = layout.section_layouts.get_mut(section_id);
                 file_offset = section_layout.alignment.align_up_usize(file_offset);
 
@@ -514,14 +568,105 @@ fn update_file_offset<P: Platform>(layout: &mut Layout<P>) -> Result {
                 }
 
                 section_layout.file_size = file_offset - section_layout.file_offset;
-
                 merged_section_layout.file_size = file_offset - merged_section_layout.file_offset;
+
+                // Update seg_file_end for all open segments.
+                for (_, seg_file_end) in &mut seg_stack {
+                    *seg_file_end = (*seg_file_end).max(file_offset);
+                }
             }
             _ => {}
         }
     }
+}
+
+fn update_file_offset<P: Platform>(layout: &mut Layout<P>) -> Result {
+    timing_phase!("Update file offsets post-compression");
+
+    let section_ids: Vec<OutputSectionId> = (&layout.output_order)
+        .into_iter()
+        .filter_map(|event| match event {
+            OrderEvent::Section(section_id) => Some(section_id),
+            _ => None,
+        })
+        .collect();
+
+    let mut cursor = 0usize;
+    let mut resized = false;
+    for section_id in section_ids {
+        let merge_target = layout.output_sections.primary_output_section(section_id);
+        let is_alloc = layout
+            .output_sections
+            .section_flags(merge_target)
+            .is_alloc();
+        let compressed = layout.compressed_debug_sections.get(section_id).is_some();
+        let section = layout.section_layouts.get(section_id);
+        let old_offset = section.file_offset;
+        let old_end = section.file_end();
+
+        if !resized {
+            if compressed {
+                if old_offset < cursor {
+                    bail!(
+                        "Compressed section {} overlaps earlier output (0x{old_offset:x} < 0x{cursor:x})",
+                        layout.output_sections.section_debug(section_id),
+                    );
+                }
+                cursor = assign_section_file_range(layout, section_id, old_offset);
+                resized = true;
+            } else if old_end > cursor {
+                cursor = old_end;
+            }
+            continue;
+        }
+
+        if is_alloc {
+            if old_offset < cursor {
+                bail!(
+                    "Alloc section {} moved due to debug info compression (file offset 0x{old_offset:x}, next file offset 0x{cursor:x})",
+                    layout.output_sections.section_debug(section_id),
+                );
+            }
+            if old_end > cursor {
+                cursor = old_end;
+            }
+            continue;
+        }
+
+        cursor = assign_section_file_range(layout, section_id, cursor);
+    }
+
+    if resized {
+        layout.refresh_layouts_after_debug_compression()?;
+    }
 
     Ok(())
+}
+
+/// Places `section_id` at `file_offset`. Only sections with file data are aligned, matching initial
+/// layout.
+fn assign_section_file_range<P: Platform>(
+    layout: &mut Layout<P>,
+    section_id: OutputSectionId,
+    mut file_offset: usize,
+) -> usize {
+    let merge_target = layout.output_sections.primary_output_section(section_id);
+    if layout.output_sections.has_data_in_file(merge_target) {
+        let alignment = layout.section_layouts.get(section_id).alignment;
+        file_offset = alignment.align_up_usize(file_offset);
+    }
+
+    let start = file_offset;
+    for part_id in section_id.parts::<P>() {
+        let part_layout = layout.section_part_layouts.get_mut(part_id);
+        part_layout.file_offset = file_offset;
+        file_offset += part_layout.file_size;
+    }
+
+    let section_layout = layout.section_layouts.get_mut(section_id);
+    section_layout.file_offset = start;
+    section_layout.file_size = file_offset - start;
+    file_offset
 }
 
 #[cfg(test)]
