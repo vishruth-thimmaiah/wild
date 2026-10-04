@@ -1,0 +1,2 @@
+V1 { global: cpu_model; };
+V2 {} V1;

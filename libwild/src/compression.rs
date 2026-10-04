@@ -10,6 +10,7 @@ use crate::elf_writer::apply_debug_relocations;
 use crate::error::Result;
 use crate::layout::FileLayout;
 use crate::layout::Layout;
+use crate::layout::assign_section_file_range;
 use crate::output_section_id::OrderEvent;
 use crate::output_section_id::OutputSectionId;
 use crate::platform::Arch;
@@ -375,7 +376,9 @@ fn build_regular_debug_section<C: ElfClass, A: Arch<Platform = elf::Elf<C>>>(
             for file_layout in &group_layout.files {
                 if let FileLayout::Object(object_layout) = file_layout {
                     for (idx, section_slot) in object_layout.sections.iter().enumerate() {
-                        if let SectionSlot::LoadedDebugInfo(_) = section_slot {
+                        if let SectionSlot::LoadedDebugInfo(_) | SectionSlot::Loaded(_) =
+                            section_slot
+                        {
                             let section_index = object::read::SectionIndex(idx);
                             let part_id = object_layout
                                 .section_part_id(section_index, &layout.symbol_db.section_part_ids);
@@ -475,50 +478,68 @@ fn update_allocation_sizes<P: Platform>(layout: &mut Layout<P>) {
 fn update_file_offset<P: Platform>(layout: &mut Layout<P>) -> Result {
     timing_phase!("Update file offsets post-compression");
 
-    // Recalculate file offsets since we changed file_sizes
-    let mut segments = layout.segment_layouts.segments.iter().peekable();
-    let mut file_offset = 0;
-    for event in &layout.output_order {
-        match event {
-            OrderEvent::SegmentStart(program_segment_id)
-                if segments.peek().is_some_and(|s| s.id == program_segment_id) =>
-            {
-                let segment_layout = segments.next().unwrap();
-                if segment_layout.sizes.file_offset != file_offset {
-                    bail!(
-                        "Segment moved due to debug info compression 0x{:x} -> 0x{:x}",
-                        segment_layout.sizes.file_offset,
-                        file_offset,
-                    );
+    let section_ids: Vec<OutputSectionId> = (&layout.output_order)
+        .into_iter()
+        .filter_map(|event| match event {
+            OrderEvent::Section(section_id) => Some(section_id),
+            _ => None,
+        })
+        .collect();
+
+    let mut cursor = 0usize;
+    let mut resized = false;
+    for section_id in section_ids {
+        let merge_target = layout.output_sections.primary_output_section(section_id);
+        let is_alloc = layout
+            .output_sections
+            .section_flags(merge_target)
+            .is_alloc();
+        let compressed = layout.compressed_debug_sections.get(section_id).is_some();
+        let section = layout.section_layouts.get_mut(section_id);
+        let old_offset = section.file_offset;
+        let old_end = section.file_end();
+
+        if !resized {
+            if !compressed {
+                if old_end > cursor {
+                    cursor = old_end;
                 }
+                continue;
             }
-            OrderEvent::Section(section_id) => {
-                let section_layout = layout.section_layouts.get_mut(section_id);
-                file_offset = section_layout.alignment.align_up_usize(file_offset);
-
-                section_layout.file_offset = file_offset;
-
-                let merge_target = layout
-                    .output_sections
-                    .merge_target(section_id)
-                    .unwrap_or(section_id);
-                let merged_section_layout = layout.merged_section_layouts.get_mut(merge_target);
-                if merge_target == section_id {
-                    merged_section_layout.file_offset = file_offset;
-                }
-
-                for part_id in section_id.parts::<P>() {
-                    let part_layout = layout.section_part_layouts.get_mut(part_id);
-                    part_layout.file_offset = file_offset;
-                    file_offset += part_layout.file_size;
-                }
-
-                section_layout.file_size = file_offset - section_layout.file_offset;
-
-                merged_section_layout.file_size = file_offset - merged_section_layout.file_offset;
+            if old_offset < cursor {
+                bail!(
+                    "Compressed section {} overlaps earlier output (0x{old_offset:x} < 0x{cursor:x})",
+                    layout.output_sections.section_debug(section_id),
+                );
             }
-            _ => {}
+            cursor = old_offset;
+            resized = true;
+        } else if is_alloc {
+            if old_offset < cursor {
+                bail!(
+                    "Alloc section {} moved due to debug info compression (file offset 0x{old_offset:x}, next file offset 0x{cursor:x})",
+                    layout.output_sections.section_debug(section_id),
+                );
+            }
+            if old_end > cursor {
+                cursor = old_end;
+            }
+            continue;
         }
+
+        if layout.output_sections.has_data_in_file(merge_target) {
+            cursor = section.alignment.align_up_usize(cursor);
+        }
+        cursor = assign_section_file_range::<P>(
+            section_id,
+            section,
+            &mut layout.section_part_layouts,
+            cursor,
+        );
+    }
+
+    if resized {
+        layout.refresh_file_layouts(crate::layout::SegmentFileLayout::FromSections)?;
     }
 
     Ok(())
