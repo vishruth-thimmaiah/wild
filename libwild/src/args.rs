@@ -654,7 +654,8 @@ pub(crate) enum OrphanHandling {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum DiscardLocals {
     #[default]
-    Locals,
+    Default,
+    Temporaries,
     All,
     None,
 }

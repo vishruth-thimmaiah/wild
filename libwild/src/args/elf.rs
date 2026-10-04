@@ -596,6 +596,14 @@ pub(crate) fn parse<S: AsRef<str>, I: Iterator<Item = S>>(
         args.discard_sframe = true;
     }
 
+    if args.discard_locals == DiscardLocals::Default {
+        if args.should_output_partial_object {
+            args.discard_locals = DiscardLocals::None;
+        } else {
+            args.discard_locals = DiscardLocals::Temporaries;
+        }
+    }
+
     Ok(())
 }
 
@@ -1002,7 +1010,6 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
             args.relro = false;
             args.should_write_linker_identity = false;
             args.merge_sections = false;
-            args.discard_locals = DiscardLocals::None;
             Ok(())
         });
 
@@ -2043,7 +2050,7 @@ fn setup_argument_parser() -> ArgumentParser<ElfArgs> {
         .long("discard-locals")
         .help("Delete temporary local symbols")
         .execute(|args, _modifier_stack| {
-            args.discard_locals = DiscardLocals::Locals;
+            args.discard_locals = DiscardLocals::Temporaries;
             Ok(())
         });
 

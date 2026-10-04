@@ -5002,7 +5002,10 @@ impl<'data> SymbolCopyInfo<'data> {
         symbol_state: ValueFlags,
         sections: &[SectionSlot],
     ) -> Option<SymbolCopyInfo<'data>> {
-        if symbol_db.args.discard_all() && sym.is_local() {
+        let is_referenced_by_reloc =
+            symbol_db.args.should_output_partial_object() && symbol_state.has_resolution();
+
+        if !is_referenced_by_reloc && symbol_db.args.discard_all() && sym.is_local() {
             return None;
         }
 
@@ -5025,7 +5028,11 @@ impl<'data> SymbolCopyInfo<'data> {
         // checks. That's also the reason why we return the symbol name, so that the caller, if it
         // needs the name, doesn't have a go and read it again.
         let name = object.symbol_name(sym).ok()?;
-        if name.is_empty() || (!symbol_db.args.discard_none() && sym.is_default_strippable(name)) {
+        if name.is_empty()
+            || (!is_referenced_by_reloc
+                && !symbol_db.args.discard_none()
+                && sym.is_default_strippable(name))
+        {
             return None;
         }
 
