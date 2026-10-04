@@ -15,6 +15,7 @@
 //#AbstractConfig:discard-all:default
 //#NoSym:unused
 //#NoSym:.Lunused
+//#ExpectSym:optional
 
 //#Config:discard-all-after-r:discard-all
 //#LinkArgs:-r -x
@@ -25,6 +26,7 @@
 //#AbstractConfig:discard-locals:default
 //#ExpectSym:unused section=.text.used
 //#NoSym:.Lunused
+//#ExpectSym:optional
 
 //#Config:discard-locals-after-r:discard-locals
 //#LinkArgs:-r -X
@@ -34,7 +36,9 @@
 
 .text
 .globl _start
+.weak optional
 _start:
+    call optional
     # Explicit relocations prevent the assembler from substituting section symbols.
     .byte 0xe8
     .reloc ., R_X86_64_PLT32, used-4
