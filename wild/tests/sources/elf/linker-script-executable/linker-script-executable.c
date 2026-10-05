@@ -1,9 +1,15 @@
 //#Config:default
+//#ReferenceLinkers:bfd,lld
 //#LinkerScript:linker-script-executable.ld
+//#DiffMatchAny:true
 //#Object:runtime.c
 //#DiffIgnore: segment.LOAD.RW.alignment
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
 //#SkipArch:riscv64
+//#ExpectSection:.comment flags=MS,type=1
+//#ExpectSection:.strtab type=3
+//#ExpectSection:.symtab type=2
+//#ExpectSection:.shstrtab type=3
 
 //#Config:no_gc_sections:default
 //#LinkArgs:--no-gc-sections

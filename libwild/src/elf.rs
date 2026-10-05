@@ -662,6 +662,7 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
     const TDATA_SECTION_ID: Option<OutputSectionId> = Some(output_section_id::TDATA);
     const TBSS_SECTION_ID: Option<OutputSectionId> = Some(output_section_id::TBSS);
     const STRTAB_SECTION_ID: Option<OutputSectionId> = Some(output_section_id::STRTAB);
+    const SHSTRTAB_SECTION_ID: Option<OutputSectionId> = Some(output_section_id::SHSTRTAB);
     const SYMTAB_GLOBAL_SECTION_ID: Option<OutputSectionId> =
         Some(output_section_id::SYMTAB_GLOBAL);
     const GOT_SECTION_ID: Option<OutputSectionId> = Some(output_section_id::GOT);

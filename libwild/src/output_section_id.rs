@@ -788,6 +788,10 @@ impl<'data, P: Platform> OutputSections<'data, P> {
         if !self.output_kind.is_partial_link()
             && let Some(builtin_id) = (0..regular_section_base::<P>().as_usize())
                 .map(OutputSectionId::from_usize)
+                .chain(P::COMMENT_SECTION_ID)
+                .chain(P::STRTAB_SECTION_ID)
+                .chain(P::SYMTAB_LOCAL_SECTION_ID)
+                .chain(P::SHSTRTAB_SECTION_ID)
                 .find(|&bid| self.identity(bid) == Some(identity))
         {
             resolved_id = Some(builtin_id);

@@ -153,6 +153,11 @@ impl SectionRuleOutcome {
             SectionRuleOutcome::NoteGnuProperty
         } else if Some(section_id) == P::RISCV_ATTRIBUTES_SECTION_ID {
             SectionRuleOutcome::RiscVAttribute
+        } else if Some(section_id) == P::STRTAB_SECTION_ID
+            || Some(section_id) == P::SYMTAB_LOCAL_SECTION_ID
+            || Some(section_id) == P::SHSTRTAB_SECTION_ID
+        {
+            SectionRuleOutcome::Discard
         } else {
             SectionRuleOutcome::Section(output_info)
         }

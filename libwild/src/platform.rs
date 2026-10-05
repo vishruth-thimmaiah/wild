@@ -351,6 +351,7 @@ pub(crate) trait Platform:
     const TDATA_SECTION_ID: Option<OutputSectionId> = None;
     const TBSS_SECTION_ID: Option<OutputSectionId> = None;
     const STRTAB_SECTION_ID: Option<OutputSectionId> = None;
+    const SHSTRTAB_SECTION_ID: Option<OutputSectionId> = None;
     const SYMTAB_LOCAL_SECTION_ID: Option<OutputSectionId> = None;
     const SYMTAB_GLOBAL_SECTION_ID: Option<OutputSectionId> = None;
     const SYMTAB_SHNDX_LOCAL_SECTION_ID: Option<OutputSectionId> = None;
