@@ -21,7 +21,7 @@
 // Other linkers and architectures might emit different first sections.
 //#ReferenceLinkers:
 //#Arch:x86_64
-//#ExpectSection:.note.gnu.property address=0x600000
+//#ExpectMinAllocAddress:0x600000
 
 #include <stddef.h>
 
