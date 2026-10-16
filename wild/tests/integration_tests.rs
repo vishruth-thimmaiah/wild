@@ -2140,6 +2140,8 @@ struct SectionAssertions {
 
     #[serde(rename = "type")]
     stype: Option<u32>,
+
+    address: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -5703,6 +5705,17 @@ impl Assertions {
                     expected.section_name,
                     expected_type,
                     ptype
+                );
+            }
+
+            if let Some(expected_address) = expected.assertions.address {
+                let actual_address = section.address();
+                ensure!(
+                    actual_address == expected_address,
+                    "Section `{}` address mismatch: expected {:#x}, got {:#x}",
+                    expected.section_name,
+                    expected_address,
+                    actual_address
                 );
             }
         }
