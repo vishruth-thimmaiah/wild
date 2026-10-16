@@ -15,6 +15,14 @@
 // .text is the first section in ld, so this test wouldn't work with ld.
 //#ReferenceLinkers:
 
+//#Config:first_section_address
+//#LinkerScript:linker-script-executable.ld
+//#Object:runtime.c
+// Other linkers and architectures might emit different first sections.
+//#ReferenceLinkers:
+//#Arch:x86_64
+//#ExpectSection:.note.gnu.property address=0x600000
+
 #include <stddef.h>
 
 #include "../common/runtime.h"
