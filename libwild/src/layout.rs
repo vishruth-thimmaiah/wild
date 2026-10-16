@@ -6205,9 +6205,8 @@ fn compute_layout_sections<'data, P: Platform>(
     )?;
     let alignment = args.loadable_segment_alignment().value();
 
-    let should_place_headers_before_base = (output_order.custom_phdrs_include_headers()
-        || !output_order.has_custom_phdrs())
-        && output_sections.has_custom_base_address();
+    let should_place_headers_before_base = output_order.custom_phdrs_include_headers()
+        || (!output_order.has_custom_phdrs() && output_sections.has_custom_base_address());
     if should_place_headers_before_base && base_address < sizeof_headers {
         bail!(
             "base address ({base_address:#x}) is less than the size of headers ({sizeof_headers:#x})"
