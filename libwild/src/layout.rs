@@ -6226,17 +6226,18 @@ fn compute_layout_sections<'data, P: Platform>(
             && output_order
                 .first_section_address_expr(output_sections)
                 .is_some());
-    if output_order.custom_phdrs_include_headers() && !output_sections.has_custom_base_address() {
-        if let Some(first_expr) = output_order.first_section_address_expr(output_sections) {
-            base_address = expression_eval(
-                first_expr,
-                &SymbolLoc::None,
-                memory_regions,
-                &section_layouts,
-                &[],
-                &laid_out_mem_offsets,
-            )?;
-        }
+    if output_order.custom_phdrs_include_headers()
+        && !output_sections.has_custom_base_address()
+        && let Some(first_expr) = output_order.first_section_address_expr(output_sections)
+    {
+        base_address = expression_eval(
+            first_expr,
+            &SymbolLoc::None,
+            memory_regions,
+            &section_layouts,
+            &[],
+            &laid_out_mem_offsets,
+        )?;
     }
     let alignment = args.loadable_segment_alignment().value();
 
