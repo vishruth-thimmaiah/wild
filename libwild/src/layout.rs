@@ -6213,7 +6213,7 @@ fn compute_layout_sections<'data, P: Platform>(
     // object symbols referenced from location-counter expressions.
     let mut laid_out_mem_offsets = output_sections.new_part_map::<Option<u64>>();
     let mut file_offset = 0;
-    let base_address = expression_eval(
+    let mut base_address = expression_eval(
         &output_sections.base_address,
         &SymbolLoc::None,
         memory_regions,
@@ -6221,17 +6221,37 @@ fn compute_layout_sections<'data, P: Platform>(
         &[],
         &laid_out_mem_offsets,
     )?;
+    let has_custom_base_address = output_sections.has_custom_base_address()
+        || (output_order.custom_phdrs_include_headers()
+            && output_order
+                .first_section_address_expr(output_sections)
+                .is_some());
+    if output_order.custom_phdrs_include_headers() && !output_sections.has_custom_base_address() {
+        if let Some(first_expr) = output_order.first_section_address_expr(output_sections) {
+            base_address = expression_eval(
+                first_expr,
+                &SymbolLoc::None,
+                memory_regions,
+                &section_layouts,
+                &[],
+                &laid_out_mem_offsets,
+            )?;
+        }
+    }
     let alignment = args.loadable_segment_alignment().value();
 
-    let should_place_headers_before_base = output_order.custom_phdrs_include_headers()
-        || (!output_order.has_custom_phdrs() && output_sections.has_custom_base_address());
-    if should_place_headers_before_base && base_address < sizeof_headers {
+    if (output_order.custom_phdrs_include_headers() || !output_order.has_custom_phdrs())
+        && has_custom_base_address
+        && base_address < sizeof_headers
+    {
         bail!(
             "base address ({base_address:#x}) is less than the size of headers ({sizeof_headers:#x})"
         );
     }
     let mut mem_offset = base_address;
-    let header_start_mem_offset = if should_place_headers_before_base {
+    let header_start_mem_offset = if output_order.custom_phdrs_include_headers()
+        || has_custom_base_address
+    {
         let offset_in_page = mem_offset % alignment;
         if offset_in_page >= sizeof_headers {
             mem_offset -= offset_in_page;
@@ -6269,7 +6289,8 @@ fn compute_layout_sections<'data, P: Platform>(
     // template, so we don't do it.
     let mut tls_memsave: Option<u64> = None;
     let mut in_tls = false;
-    let mut has_reset_base_address = !should_place_headers_before_base;
+    let mut has_reset_base_address =
+        output_order.has_custom_phdrs() || !output_sections.has_custom_base_address();
 
     for event in output_order {
         match event {

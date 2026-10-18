@@ -2,6 +2,7 @@
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
 //#SkipArch:riscv64
+//#ReferenceLinkers:bfd,lld
 
 //#Config:page_aligned_x86_64:default
 //#Arch:x86_64
@@ -55,6 +56,33 @@
 //#ExpectSym:other address=0x700000
 //#ExpectSym:rodata address=0x500000
 //#DiffIgnore:segment.LOAD.RX.alignment
+
+//#Config:below_default_base_x86:default
+//#Arch:x86_64
+//#LinkerScript:below-default-base.ld
+//#ExpectSection:.text address=0x3fe800
+//#ExpectProgramHeader:LOAD vaddr=0x3fe000,sections=[.text,*]
+
+//#Config:below_default_base_aarch64:default
+//#Arch:aarch64
+//#LinkerScript:below-default-base.ld
+//#ExpectSection:.text address=0x3fe800
+//#ExpectProgramHeader:LOAD vaddr=0x3f0000,sections=[.text,*]
+
+//#AbstractConfig:zero_base:default
+//#CompArgs: -fPIC
+//#LinkerScript:zero-base.ld
+//#ExpectSection:.text address=0x1000
+//#ExpectProgramHeader:LOAD vaddr=0,sections=[.text,*]
+//#RunEnabled:false
+
+//#Config:pie:zero_base
+//#Mode:dynamic
+//#LinkArgs:-pie
+//#DiffMatchAny:true
+
+//#Config:shared:zero_base
+//#LinkArgs:-shared
 
 #include "../common/runtime.h"
 

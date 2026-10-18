@@ -124,6 +124,7 @@ pub(crate) struct OutputOrder<'data> {
     num_location_counters: usize,
     has_custom_phdrs: bool,
     custom_phdrs_include_headers: bool,
+    first_section: Option<OutputSectionId>,
 }
 
 pub(crate) struct OutputOrderDisplay<'a, 'data, P: Platform> {
@@ -150,6 +151,7 @@ pub(crate) struct OutputOrderBuilder<'scope, 'data, P: Platform> {
     custom_phdrs_include_headers: bool,
     location_counters: &'scope [crate::layout_rules::LocationCounter<'data>],
     last_location_counter: Option<LocationCounterIndex>,
+    first_section: Option<OutputSectionId>,
 }
 
 impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
@@ -175,6 +177,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
             custom_phdrs_include_headers: false,
             location_counters,
             last_location_counter: location_counters.last().map(|_| 0),
+            first_section: None,
         }
     }
 
@@ -211,6 +214,13 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
     }
 
     pub(crate) fn add_section(&mut self, section_id: OutputSectionId) {
+        if self.first_section.is_none()
+            && section_id != crate::output_section_id::FILE_HEADER
+            && !P::CUSTOM_PHDR_EXCLUDED_SECTION_IDS.contains(&section_id)
+        {
+            self.first_section = Some(section_id);
+        }
+
         // When RELRO segment ends, also end the RW LOAD segment so that subsequent non-RELRO
         // sections go into a new LOAD segment.
         if self.should_end_current_rw_segment(section_id) {
@@ -449,6 +459,7 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
                 num_location_counters: self.location_counters.len(),
                 has_custom_phdrs: self.has_custom_phdrs,
                 custom_phdrs_include_headers: self.custom_phdrs_include_headers,
+                first_section: self.first_section,
             },
             self.program_segments,
         )
@@ -1200,6 +1211,18 @@ impl<'data> OutputOrder<'data> {
 
     pub(crate) fn custom_phdrs_include_headers(&self) -> bool {
         self.custom_phdrs_include_headers
+    }
+
+    pub(crate) fn first_section_address_expr<'a, P: Platform>(
+        &self,
+        output_sections: &'a OutputSections<'data, P>,
+    ) -> Option<&'a Expression<'data>> {
+        output_sections
+            .output_info(self.first_section?)
+            .location_info
+            .as_ref()?
+            .location
+            .as_ref()
     }
 
     pub(crate) fn display<'a, P: Platform>(
