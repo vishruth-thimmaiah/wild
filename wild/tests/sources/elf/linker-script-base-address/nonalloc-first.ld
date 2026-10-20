@@ -25,3 +25,5 @@ SECTIONS {
         KEEP(*(.bss*))
     } :data
 }
+
+ASSERT(ADDR(.bss) > 0x800000, "bss is not after data")

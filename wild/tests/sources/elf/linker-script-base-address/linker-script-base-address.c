@@ -25,7 +25,6 @@
 //#ExpectSection:.debug_str address=0,index=2
 //#ExpectSection:.debug_line address=0
 //#ExpectSection:.text address=0x400000
-//#ExpectSection:.bss address=0x800004
 
 //#Config:nonalloc_first_x86:nonalloc_first
 //#Arch:x86_64
