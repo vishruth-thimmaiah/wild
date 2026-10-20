@@ -117,6 +117,8 @@
 //!   or 1 if sh_entsize is 0).
 //!   flags=WAX: Asserts the section has the specified section flags.
 //!   type=int: Asserts the section has the specified section type.
+//!   address=int: Asserts the section has the specified address.
+//!   index=int: Asserts the section has the specified section header index.
 //!
 //! RelrCount:N Checks that .relr.dyn encodes at least N total relocations (counting both address
 //! entries and bitmap-encoded relocations).
@@ -2151,6 +2153,8 @@ struct SectionAssertions {
     stype: Option<u32>,
 
     address: Option<u64>,
+
+    index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -5829,6 +5833,17 @@ impl Assertions {
                     expected.section_name,
                     expected_address,
                     actual_address
+                );
+            }
+
+            if let Some(expected_index) = expected.assertions.index {
+                let index = section.index().0;
+                ensure!(
+                    index == expected_index,
+                    "Section `{}` index mismatch: expected {:#x}, got {:#x}",
+                    expected.section_name,
+                    expected_index,
+                    index
                 );
             }
         }

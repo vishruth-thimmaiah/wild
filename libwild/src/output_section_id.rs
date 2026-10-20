@@ -214,9 +214,11 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
     }
 
     pub(crate) fn add_section(&mut self, section_id: OutputSectionId) {
+        let section_info = self.output_sections.output_info(section_id);
         if self.first_section.is_none()
             && section_id != crate::output_section_id::FILE_HEADER
             && !P::CUSTOM_PHDR_EXCLUDED_SECTION_IDS.contains(&section_id)
+            && section_info.section_attributes.is_alloc()
         {
             self.first_section = Some(section_id);
         }
@@ -233,7 +235,6 @@ impl<'scope, 'data, P: Platform> OutputOrderBuilder<'scope, 'data, P> {
             self.events.push(OrderEvent::SegmentEnd(segment_id));
         }
 
-        let section_info = self.output_sections.output_info(section_id);
         debug_assert!(
             matches!(section_info.kind, SectionKind::Primary(_)),
             "Attempted to directly emit secondary section {section_id}"

@@ -17,6 +17,24 @@
 //#ExpectProgramHeader:LOAD flags=RX,sections=[.text,*],vaddr=0x3ff000
 //#ExpectSection:.text address=0x400000
 
+//#AbstractConfig:nonalloc_first:default
+//#CompArgs:-g
+//#LinkArgs: --no-gc-sections
+//#LinkerScript:nonalloc-first.ld
+//#ExpectSection:.debug_info address=0,index=1
+//#ExpectSection:.debug_str address=0,index=2
+//#ExpectSection:.debug_line address=0
+//#ExpectSection:.text address=0x400000
+//#ExpectSection:.bss address=0x800004
+
+//#Config:nonalloc_first_x86:nonalloc_first
+//#Arch:x86_64
+//#ExpectProgramHeader:LOAD flags=RX,sections=[.text,*],vaddr=0x3ff000
+
+//#Config:nonalloc_first_aarch64:nonalloc_first
+//#Arch:aarch64
+//#ExpectProgramHeader:LOAD flags=RX,sections=[.text,*],vaddr=0x3f0000
+
 //#Config:page_aligned_aarch64:default
 //#Arch:aarch64
 //#LinkerScript:page-aligned.ld
