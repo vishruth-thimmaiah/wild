@@ -630,7 +630,7 @@ fn update_internal_symbols_resolutions<'data, P: Platform>(
             merged_section_layouts
         };
 
-        let (value, section_id, is_absolute) = evaluate_expression(
+        let evaluated = evaluate_expression(
             &redirect.expression,
             &redirect.loc,
             input_ref,
@@ -674,19 +674,13 @@ fn update_internal_symbols_resolutions<'data, P: Platform>(
             continue;
         };
 
-        if is_absolute && redirect.loc.relative_section_id().is_some() {
-            redirect.loc = SymbolLoc::None;
-        } else if matches!(redirect.loc, SymbolLoc::None)
-            && let Some(sec_id) = section_id
-        {
-            redirect.loc = SymbolLoc::SectionEnd(sec_id);
-        }
+        redirect.update_for_evaluated_value(&evaluated);
 
         if let Some(canonical_symbol_id) = canonical_symbol_id {
             let resolution = resolutions[canonical_symbol_id.as_usize()]
                 .as_mut()
                 .ok_or_else(|| redirect.missing_resolution(def_info.name))?;
-            resolution.raw_value = value;
+            resolution.raw_value = evaluated.value;
         }
     }
 
@@ -6208,7 +6202,7 @@ fn compute_layout_sections<'data, P: Platform>(
                 &section_positions,
                 &mut visited_nodes,
             )
-            .map(|(val, _, _)| val)
+            .map(|evaluated| evaluated.value)
         };
 
     // Memory offsets of the output-section parts that have been laid out so far. Used to resolve
