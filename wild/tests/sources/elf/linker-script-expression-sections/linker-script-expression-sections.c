@@ -17,6 +17,11 @@
 //#ExpectSym:max_right section=".text",address=0x10010
 //#ExpectSym:max_left section=".text",address=0x10010
 
+//#Config:nested-subtraction:base
+//#ReferenceLinkers:bfd,lld
+//#LinkArgs:-T ./nested-subtraction.ld
+//#ExpectSym:difference is_abs=true,address=0x20
+
 //#Config:min-max-location:base
 //#LinkArgs:-T ./min-max-location.ld
 //#ExpectSym:padded_end section=".text",address=0x10100

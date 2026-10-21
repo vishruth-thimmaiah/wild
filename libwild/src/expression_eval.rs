@@ -246,6 +246,9 @@ fn arithmetic_binary_op(
             (ExpressionValueKind::Number, ExpressionValueKind::Number) => {
                 ExpressionValueKind::Number
             }
+            (ExpressionValueKind::Relative(_), ExpressionValueKind::Relative(_)) => {
+                ExpressionValueKind::Number
+            }
             (ExpressionValueKind::Relative(sec), _) | (_, ExpressionValueKind::Relative(sec)) => {
                 ExpressionValueKind::Relative(sec)
             }
