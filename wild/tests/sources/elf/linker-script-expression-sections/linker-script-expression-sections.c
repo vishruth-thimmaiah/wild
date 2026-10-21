@@ -40,13 +40,19 @@
 //#ExpectSym:in_sec_add section=".text",address=0x10010
 //#ExpectSym:in_sec_sub section=".text",address=0x10010
 //#ExpectSym:in_sec_mul section=".text",address=0x10020
-//#ExpectSym:out_add is_abs=false,address=0x11000
-//#ExpectSym:out_sub is_abs=false,address=0xf000
+//#ExpectSym:in_sec_add_rev section=".text"
+//#ExpectSym:in_sec_sub_rev section=".text"
+//#ExpectSym:in_sec_loadaddr_sub is_abs=true,address=0xf000
+//#ExpectSym:in_sec_loadaddr_mul is_abs=true,address=0x20000
+//#ExpectSym:in_sec_loadaddr_and is_abs=true,address=0x0
+//#ExpectSym:out_add is_abs=true,address=0x11000
+//#ExpectSym:out_sub is_abs=true,address=0xf000
 //#ExpectSym:out_sub_rev is_abs=true,address=0x20000
 //#ExpectSym:out_mul is_abs=true,address=0x20000
 //#ExpectSym:out_div is_abs=true,address=0x8000
 //#ExpectSym:out_shift is_abs=true,address=0x8000
 //#ExpectSym:out_diff is_abs=true,address=0x100
 //#ExpectSym:out_rel_plus_abs is_abs=true,address=0x10020
+//#ExpectSym:out_loadaddr_and is_abs=true,address=0x0
 
 void _start(void) {}

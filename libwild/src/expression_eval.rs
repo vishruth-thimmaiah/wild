@@ -216,70 +216,7 @@ fn evaluate_symbol_value<P: Platform>(
     }
 }
 
-fn add_binary_op(
-    mut val_l: u64,
-    mut kind_l: ExpressionValueKind,
-    mut val_r: u64,
-    mut kind_r: ExpressionValueKind,
-    is_in_section: bool,
-    section_layouts: &OutputSectionMap<OutputRecordLayout>,
-    op: impl FnOnce(u64, u64) -> Result<u64>,
-) -> Result<EvaluatedValue> {
-    if is_in_section
-        && let (ExpressionValueKind::Relative(sec_l), ExpressionValueKind::Relative(sec_r)) =
-            (kind_l, kind_r)
-        && sec_l != sec_r
-    {
-        val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
-        kind_l = ExpressionValueKind::Address;
-        val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
-        kind_r = ExpressionValueKind::Address;
-    }
-
-    let res_kind = match (kind_l, kind_r) {
-        (ExpressionValueKind::Number, ExpressionValueKind::Number) => ExpressionValueKind::Number,
-        (ExpressionValueKind::Relative(sec), ExpressionValueKind::Number)
-        | (ExpressionValueKind::Number, ExpressionValueKind::Relative(sec)) => {
-            ExpressionValueKind::Relative(sec)
-        }
-        (ExpressionValueKind::Relative(sec), ExpressionValueKind::Absolute)
-        | (ExpressionValueKind::Absolute, ExpressionValueKind::Relative(sec)) => {
-            if is_in_section {
-                ExpressionValueKind::Relative(sec)
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        (ExpressionValueKind::Relative(_), ExpressionValueKind::Relative(_)) => {
-            if is_in_section {
-                ExpressionValueKind::Number
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        (ExpressionValueKind::Relative(sec), _) | (_, ExpressionValueKind::Relative(sec)) => {
-            ExpressionValueKind::Relative(sec)
-        }
-        (ExpressionValueKind::Absolute, _) | (_, ExpressionValueKind::Absolute) => {
-            if is_in_section
-                && matches!(kind_l, ExpressionValueKind::Absolute)
-                && matches!(kind_r, ExpressionValueKind::Absolute)
-            {
-                ExpressionValueKind::Number
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        _ => ExpressionValueKind::Address,
-    };
-
-    Ok(EvaluatedValue {
-        value: op(val_l, val_r)?,
-        value_kind: res_kind,
-    })
-}
-
-fn sub_binary_op(
+fn arithmetic_binary_op(
     mut val_l: u64,
     mut kind_l: ExpressionValueKind,
     mut val_r: u64,
@@ -289,83 +226,45 @@ fn sub_binary_op(
     op: impl FnOnce(u64, u64) -> Result<u64>,
 ) -> Result<EvaluatedValue> {
     if is_in_section {
+        let val_l: &mut u64 = &mut val_l;
+        let kind_l: &mut ExpressionValueKind = &mut kind_l;
+        let val_r: &mut u64 = &mut val_r;
+        let kind_r: &mut ExpressionValueKind = &mut kind_r;
         if let (ExpressionValueKind::Relative(sec_l), ExpressionValueKind::Relative(sec_r)) =
-            (kind_l, kind_r)
+            (*kind_l, *kind_r)
             && sec_l != sec_r
         {
-            val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
-            kind_l = ExpressionValueKind::Address;
-            val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
-            kind_r = ExpressionValueKind::Address;
-        } else if matches!(kind_l, ExpressionValueKind::Number)
-            && let ExpressionValueKind::Relative(sec_r) = kind_r
-        {
-            val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
+            *val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
+            *kind_l = ExpressionValueKind::Address;
+            *val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
+            *kind_r = ExpressionValueKind::Address;
         }
     }
 
-    let res_kind = match (kind_l, kind_r) {
-        (ExpressionValueKind::Number, ExpressionValueKind::Number) => ExpressionValueKind::Number,
-        (ExpressionValueKind::Relative(sec), ExpressionValueKind::Number) => {
-            ExpressionValueKind::Relative(sec)
-        }
-        (ExpressionValueKind::Number, ExpressionValueKind::Relative(_)) => {
-            ExpressionValueKind::Absolute
-        }
-        (ExpressionValueKind::Relative(sec), ExpressionValueKind::Absolute) => {
-            if is_in_section {
-                ExpressionValueKind::Relative(sec)
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        (ExpressionValueKind::Absolute, ExpressionValueKind::Relative(_)) => {
-            ExpressionValueKind::Absolute
-        }
-        (ExpressionValueKind::Relative(_), ExpressionValueKind::Relative(_)) => {
-            if is_in_section {
-                ExpressionValueKind::Number
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        (ExpressionValueKind::Relative(sec), _) => ExpressionValueKind::Relative(sec),
-        (ExpressionValueKind::Absolute, _) | (_, ExpressionValueKind::Absolute) => {
-            if is_in_section
-                && matches!(kind_l, ExpressionValueKind::Absolute)
-                && matches!(kind_r, ExpressionValueKind::Absolute)
-            {
-                ExpressionValueKind::Number
-            } else {
-                ExpressionValueKind::Absolute
-            }
-        }
-        _ => ExpressionValueKind::Address,
-    };
-
-    Ok(EvaluatedValue {
-        value: op(val_l, val_r)?,
-        value_kind: res_kind,
-    })
-}
-
-fn non_additive_binary_op(
-    val_l: u64,
-    kind_l: ExpressionValueKind,
-    val_r: u64,
-    kind_r: ExpressionValueKind,
-    is_in_section: bool,
-    _section_layouts: &OutputSectionMap<OutputRecordLayout>,
-    op: impl FnOnce(u64, u64) -> Result<u64>,
-) -> Result<EvaluatedValue> {
     let value_kind = if is_in_section {
-        if let Some(sec) = kind_l.section_id().or_else(|| kind_r.section_id()) {
-            ExpressionValueKind::Relative(sec)
-        } else {
-            ExpressionValueKind::Number
+        match (kind_l, kind_r) {
+            (ExpressionValueKind::Number, ExpressionValueKind::Number) => {
+                ExpressionValueKind::Number
+            }
+            (ExpressionValueKind::Relative(sec), _) | (_, ExpressionValueKind::Relative(sec)) => {
+                ExpressionValueKind::Relative(sec)
+            }
+            (ExpressionValueKind::Absolute, ExpressionValueKind::Absolute) => {
+                ExpressionValueKind::Number
+            }
+            (ExpressionValueKind::Absolute, _) | (_, ExpressionValueKind::Absolute) => {
+                ExpressionValueKind::Absolute
+            }
+            _ => ExpressionValueKind::Address,
         }
     } else if kind_l.is_number() && kind_r.is_number() {
         ExpressionValueKind::Number
+    } else if matches!(kind_l, ExpressionValueKind::Address)
+        && matches!(kind_r, ExpressionValueKind::Number)
+        || matches!(kind_l, ExpressionValueKind::Number)
+            && matches!(kind_r, ExpressionValueKind::Address)
+    {
+        ExpressionValueKind::Address
     } else {
         ExpressionValueKind::Absolute
     };
@@ -678,21 +577,21 @@ fn evaluate_expression_value<'data, P: Platform>(
         }
 
         Expression::Add(l, r) => {
-            try_eval_binary_op!(l, r, add_binary_op, |a, b| Ok(a.wrapping_add(b)))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a.wrapping_add(b)))
         }
         Expression::Subtract(l, r) => {
-            try_eval_binary_op!(l, r, sub_binary_op, |a, b| Ok(a.wrapping_sub(b)))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a.wrapping_sub(b)))
         }
         Expression::Multiply(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| Ok(a.wrapping_mul(b)))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a.wrapping_mul(b)))
         }
-        Expression::Divide(l, r) => try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| {
+        Expression::Divide(l, r) => try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| {
             if b == 0 {
                 bail!("Division by zero in linker script expression");
             }
             Ok(((a as i64).wrapping_div(b as i64)) as u64)
         }),
-        Expression::Modulo(l, r) => try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| {
+        Expression::Modulo(l, r) => try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| {
             if b == 0 {
                 bail!("Modulo by zero in linker script expression");
             }
@@ -752,21 +651,21 @@ fn evaluate_expression_value<'data, P: Platform>(
         Expression::Min(l, r) => eval_binary_op!(l, r, min_max_binary_op, u64::min),
         Expression::Max(l, r) => eval_binary_op!(l, r, min_max_binary_op, u64::max),
         Expression::BitwiseAnd(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| Ok(a & b))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a & b))
         }
         Expression::BitwiseOr(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| Ok(a | b))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a | b))
         }
         Expression::BitwiseXor(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| Ok(a ^ b))
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| Ok(a ^ b))
         }
         Expression::LeftShift(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| {
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| {
                 Ok(a.wrapping_shl(b as u32))
             })
         }
         Expression::RightShift(l, r) => {
-            try_eval_binary_op!(l, r, non_additive_binary_op, |a, b| {
+            try_eval_binary_op!(l, r, arithmetic_binary_op, |a, b| {
                 Ok(a.wrapping_shr(b as u32))
             })
         }
