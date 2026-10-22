@@ -87,4 +87,4 @@
 
 int data_var = 42;
 
-void _start(void) {}
+__attribute__((aligned(0x1))) void _start(void) {}
