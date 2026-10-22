@@ -380,8 +380,8 @@ impl Redirect<'_> {
     ) {
         if evaluated.is_absolute() && self.loc.relative_section_id().is_some() {
             self.loc = SymbolLoc::None;
-        } else if matches!(self.loc, SymbolLoc::None)
-            && let Some(sec_id) = evaluated.section_id()
+        } else if let Some(sec_id) = evaluated.section_id()
+            && self.loc.relative_section_id() != Some(sec_id)
         {
             self.loc = SymbolLoc::SectionEnd(sec_id);
         }

@@ -40,6 +40,11 @@
 //#ExpectSym:derived is_abs=true,address=0x10010
 //#ExpectSym:derived_reverse is_abs=true,address=0x10010
 
+//#Config:unaligned-align:base
+//#LinkArgs:-T ./unaligned-align.ld
+//#ExpectSym:unaligned_dot_align section=".text",address=0x10010
+//#ExpectSym:unaligned_expr_align section=".text",address=0x10004
+
 //#Config:expression-arith:base
 //#LinkArgs:-T ./expression-arith.ld
 //#ExpectSym:in_sec_add section=".text",address=0x10010
@@ -50,6 +55,18 @@
 //#ExpectSym:in_sec_loadaddr_sub is_abs=true,address=0xf000
 //#ExpectSym:in_sec_loadaddr_mul is_abs=true,address=0x20000
 //#ExpectSym:in_sec_loadaddr_and is_abs=true,address=0x0
+//#ExpectSym:in_sec_loadaddr_diff section=".text",address=0xff00
+//#ExpectSym:in_sec_loadaddr_diff_rev section=".text",address=0x10100
+//#ExpectSym:in_sec_loadaddr_add section=".text",address=0x30100
+//#ExpectSym:in_sec_cross_diff section=".text",address=0x20000
+//#ExpectSym:in_sec_cross_add section=".text",address=0x40000
+//#ExpectSym:in_sec_cross_ref section=".data",address=0x20000
+//#ExpectSym:in_sec_neg section=".text",address=0x10000
+//#ExpectSym:in_sec_not section=".text",address=0xffff
+//#ExpectSym:in_sec_abs_alias section=".text",address=0x10020
+//#ExpectSym:in_sec_align section=".text",address=0x10000
+//#ExpectSym:in_sec_align_expr section=".text",address=0x10100
+//#ExpectSym:mid_align section=".data",address=0x20200
 //#ExpectSym:out_add is_abs=true,address=0x11000
 //#ExpectSym:out_sub is_abs=true,address=0xf000
 //#ExpectSym:out_sub_rev is_abs=true,address=0x20000
@@ -59,5 +76,15 @@
 //#ExpectSym:out_diff is_abs=true,address=0x100
 //#ExpectSym:out_rel_plus_abs is_abs=true,address=0x10020
 //#ExpectSym:out_loadaddr_and is_abs=true,address=0x0
+//#ExpectSym:out_loadaddr_diff_rev is_abs=true,address=0x100
+//#ExpectSym:out_loadaddr_add is_abs=true,address=0x20100
+//#ExpectSym:out_cross_diff is_abs=true,address=0x10000
+//#ExpectSym:out_cross_add is_abs=true,address=0x30000
+//#ExpectSym:out_neg section=".text",address=0x10000
+//#ExpectSym:out_not section=".text",address=0xffff
+//#ExpectSym:out_abs_alias is_abs=true,address=0x20
+//#ExpectSym:out_align_expr is_abs=true,address=0x10100
+
+int data_var = 42;
 
 void _start(void) {}

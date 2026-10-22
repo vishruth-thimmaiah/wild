@@ -92,13 +92,6 @@ impl ExpressionValueKind {
             _ => None,
         }
     }
-
-    fn needs_section_base(self) -> bool {
-        matches!(
-            self,
-            ExpressionValueKind::Number | ExpressionValueKind::Relative(_)
-        )
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,11 +119,11 @@ fn evaluate_section_address<P: Platform>(
     value_kind: &mut ExpressionValueKind,
     name: &[u8],
 ) -> Result<u64> {
+    *value_kind = ExpressionValueKind::Relative(target_section);
     let current_section = loc
         .relative_section_id()
         .map(|id| output_sections.primary_output_section(id));
     if current_section == Some(target_section) {
-        *value_kind = ExpressionValueKind::Relative(target_section);
         let section_base = section_layouts.get(target_section).mem_offset;
         let offset = address.checked_sub(section_base).with_context(|| {
             format!(
@@ -139,11 +132,7 @@ fn evaluate_section_address<P: Platform>(
             )
         })?;
         Ok(offset)
-    } else if current_section.is_some() {
-        *value_kind = ExpressionValueKind::Address;
-        Ok(address)
     } else {
-        *value_kind = ExpressionValueKind::Relative(target_section);
         Ok(address)
     }
 }
@@ -174,8 +163,8 @@ fn evaluate_symbol_value<P: Platform>(
             address,
         } => {
             let primary_section = output_sections.primary_output_section(*section_id);
+            *value_kind = ExpressionValueKind::Relative(primary_section);
             if current_section == Some(primary_section) {
-                *value_kind = ExpressionValueKind::Relative(primary_section);
                 let section_base = section_layouts.get(primary_section).mem_offset;
                 let offset = address.checked_sub(section_base).with_context(|| {
                     format!(
@@ -184,12 +173,7 @@ fn evaluate_symbol_value<P: Platform>(
                     )
                 })?;
                 Ok(offset)
-            } else if let Some(section) = current_section {
-                *value_kind = ExpressionValueKind::Address;
-                let section_base = section_layouts.get(section).mem_offset;
-                Ok(address + section_base)
             } else {
-                *value_kind = ExpressionValueKind::Relative(primary_section);
                 Ok(*address)
             }
         }
@@ -221,24 +205,38 @@ fn arithmetic_binary_op(
     mut kind_l: ExpressionValueKind,
     mut val_r: u64,
     mut kind_r: ExpressionValueKind,
-    is_in_section: bool,
+    current_section: Option<OutputSectionId>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     op: impl FnOnce(u64, u64) -> Result<u64>,
 ) -> Result<EvaluatedValue> {
-    if is_in_section {
-        let val_l: &mut u64 = &mut val_l;
-        let kind_l: &mut ExpressionValueKind = &mut kind_l;
-        let val_r: &mut u64 = &mut val_r;
-        let kind_r: &mut ExpressionValueKind = &mut kind_r;
-        if let (ExpressionValueKind::Relative(sec_l), ExpressionValueKind::Relative(sec_r)) =
-            (*kind_l, *kind_r)
-            && sec_l != sec_r
-        {
-            *val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
-            *kind_l = ExpressionValueKind::Address;
-            *val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
-            *kind_r = ExpressionValueKind::Address;
+    let is_in_section = current_section.is_some();
+    let normalize_rel = |val: &mut u64, kind: &mut ExpressionValueKind, sec: OutputSectionId| {
+        if current_section == Some(sec) {
+            *val = val.wrapping_add(section_layouts.get(sec).mem_offset);
         }
+        *kind = ExpressionValueKind::Address;
+    };
+
+    match (kind_l, kind_r) {
+        (ExpressionValueKind::Relative(sec_l), ExpressionValueKind::Relative(sec_r)) => {
+            if sec_l != sec_r || !is_in_section {
+                normalize_rel(&mut val_l, &mut kind_l, sec_l);
+                normalize_rel(&mut val_r, &mut kind_r, sec_r);
+            }
+        }
+        (
+            ExpressionValueKind::Relative(sec_l),
+            ExpressionValueKind::Absolute | ExpressionValueKind::Address,
+        ) => {
+            normalize_rel(&mut val_l, &mut kind_l, sec_l);
+        }
+        (
+            ExpressionValueKind::Absolute | ExpressionValueKind::Address,
+            ExpressionValueKind::Relative(sec_r),
+        ) => {
+            normalize_rel(&mut val_r, &mut kind_r, sec_r);
+        }
+        _ => {}
     }
 
     let value_kind = if is_in_section {
@@ -249,11 +247,12 @@ fn arithmetic_binary_op(
             (ExpressionValueKind::Relative(_), ExpressionValueKind::Relative(_)) => {
                 ExpressionValueKind::Number
             }
+            (
+                ExpressionValueKind::Absolute | ExpressionValueKind::Address,
+                ExpressionValueKind::Absolute | ExpressionValueKind::Address,
+            ) => ExpressionValueKind::Number,
             (ExpressionValueKind::Relative(sec), _) | (_, ExpressionValueKind::Relative(sec)) => {
                 ExpressionValueKind::Relative(sec)
-            }
-            (ExpressionValueKind::Absolute, ExpressionValueKind::Absolute) => {
-                ExpressionValueKind::Number
             }
             (ExpressionValueKind::Absolute, _) | (_, ExpressionValueKind::Absolute) => {
                 ExpressionValueKind::Absolute
@@ -283,28 +282,32 @@ fn compare_binary_op(
     kind_l: ExpressionValueKind,
     mut val_r: u64,
     kind_r: ExpressionValueKind,
-    is_in_section: bool,
+    current_section: Option<OutputSectionId>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     op: impl FnOnce(u64, u64) -> bool,
 ) -> EvaluatedValue {
-    if is_in_section {
+    if let Some(cur_sec) = current_section {
         match (kind_l, kind_r) {
             (ExpressionValueKind::Relative(sec_l), ExpressionValueKind::Relative(sec_r)) => {
                 if sec_l != sec_r {
-                    val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
-                    val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
+                    if sec_l == cur_sec {
+                        val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
+                    }
+                    if sec_r == cur_sec {
+                        val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
+                    }
                 }
             }
             (
                 ExpressionValueKind::Relative(sec_l),
                 ExpressionValueKind::Absolute | ExpressionValueKind::Address,
-            ) => {
+            ) if sec_l == cur_sec => {
                 val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
             }
             (
                 ExpressionValueKind::Absolute | ExpressionValueKind::Address,
                 ExpressionValueKind::Relative(sec_r),
-            ) => {
+            ) if sec_r == cur_sec => {
                 val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
             }
             _ => {}
@@ -324,10 +327,11 @@ fn min_max_binary_op(
     l_kind: ExpressionValueKind,
     mut val_r: u64,
     r_kind: ExpressionValueKind,
-    is_in_section: bool,
+    current_section: Option<OutputSectionId>,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     op: impl FnOnce(u64, u64) -> u64,
 ) -> EvaluatedValue {
+    let is_in_section = current_section.is_some();
     let value_kind = if l_kind.section_id().is_some() && l_kind.section_id() == r_kind.section_id()
     {
         l_kind
@@ -339,18 +343,18 @@ fn min_max_binary_op(
         r_kind
     } else {
         if is_in_section {
-            if let Some(sec_l) = l_kind.section_id() {
+            if let ExpressionValueKind::Relative(sec_l) = l_kind
+                && current_section == Some(sec_l)
+            {
                 val_l = val_l.wrapping_add(section_layouts.get(sec_l).mem_offset);
             }
-            if let Some(sec_r) = r_kind.section_id() {
+            if let ExpressionValueKind::Relative(sec_r) = r_kind
+                && current_section == Some(sec_r)
+            {
                 val_r = val_r.wrapping_add(section_layouts.get(sec_r).mem_offset);
             }
         }
-        if l_kind.is_absolute() || r_kind.is_absolute() {
-            ExpressionValueKind::Absolute
-        } else {
-            ExpressionValueKind::Address
-        }
+        ExpressionValueKind::Absolute
     };
 
     EvaluatedValue {
@@ -364,7 +368,7 @@ fn logical_binary_op(
     _l_kind: ExpressionValueKind,
     val_r: u64,
     _r_kind: ExpressionValueKind,
-    _is_in_section: bool,
+    _current_section: Option<OutputSectionId>,
     _section_layouts: &OutputSectionMap<OutputRecordLayout>,
     op: impl FnOnce(bool, bool) -> bool,
 ) -> EvaluatedValue {
@@ -444,10 +448,16 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
         symbol_resolution_callback,
     )?;
 
-    let offset = if value_kind.needs_section_base()
-        && let Some(id) = expr_loc.relative_section_id()
+    let current_section = expr_loc
+        .relative_section_id()
+        .map(|id| output_sections.primary_output_section(id));
+    let offset = if let ExpressionValueKind::Relative(sec) = value_kind
+        && current_section == Some(sec)
     {
-        let primary_id = output_sections.primary_output_section(id);
+        section_layouts.get(sec).mem_offset
+    } else if let ExpressionValueKind::Number = value_kind
+        && let Some(primary_id) = current_section
+    {
         section_layouts.get(primary_id).mem_offset
     } else {
         0
@@ -465,7 +475,7 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
     };
 
     Ok(EvaluatedValue {
-        value: value + offset,
+        value: value.wrapping_add(offset),
         value_kind,
     })
 }
@@ -506,6 +516,10 @@ fn evaluate_expression_value<'data, P: Platform>(
         };
     }
 
+    let current_section = expr_loc
+        .relative_section_id()
+        .map(|id| output_sections.primary_output_section(id));
+
     macro_rules! try_eval_binary_op {
         ($l:expr, $r:expr, $func:ident, $op:expr) => {{
             let mut l_kind = ExpressionValueKind::Number;
@@ -517,7 +531,7 @@ fn evaluate_expression_value<'data, P: Platform>(
                 l_kind,
                 val_r,
                 r_kind,
-                expr_loc.relative_section_id().is_some(),
+                current_section,
                 section_layouts,
                 $op,
             )?;
@@ -537,21 +551,12 @@ fn evaluate_expression_value<'data, P: Platform>(
                 l_kind,
                 val_r,
                 r_kind,
-                expr_loc.relative_section_id().is_some(),
+                current_section,
                 section_layouts,
                 $op,
             );
             *value_kind = result.value_kind;
             Ok(result.value)
-        }};
-    }
-
-    macro_rules! eval_unary_op {
-        ($e:expr, $op:expr) => {{
-            let mut e_kind = ExpressionValueKind::Number;
-            let val = eval!($e, &mut e_kind)?;
-            *value_kind = e_kind;
-            Ok($op(val))
         }};
     }
 
@@ -638,8 +643,15 @@ fn evaluate_expression_value<'data, P: Platform>(
             if align == 0 {
                 bail!("ALIGN(0) is invalid");
             }
-            let expr = match expr.as_ref() {
-                Some(e) => eval!(e, value_kind)?,
+            let is_dot = expr.is_none();
+            let val = match expr.as_ref() {
+                Some(e) => {
+                    let val = eval!(e, value_kind)?;
+                    if current_section.is_none() {
+                        *value_kind = ExpressionValueKind::Absolute;
+                    }
+                    val
+                }
                 None => evaluate_location(
                     expr_loc,
                     section_layouts,
@@ -648,7 +660,18 @@ fn evaluate_expression_value<'data, P: Platform>(
                     value_kind,
                 )?,
             };
-            Ok(expr.next_multiple_of(align))
+            if is_dot
+                && let ExpressionValueKind::Relative(sec) = *value_kind
+                && current_section == Some(sec)
+            {
+                let base = section_layouts.get(sec).mem_offset;
+                Ok(base
+                    .wrapping_add(val)
+                    .next_multiple_of(align)
+                    .wrapping_sub(base))
+            } else {
+                Ok(val.next_multiple_of(align))
+            }
         }
 
         Expression::Min(l, r) => eval_binary_op!(l, r, min_max_binary_op, u64::min),
@@ -688,8 +711,32 @@ fn evaluate_expression_value<'data, P: Platform>(
             };
             Ok(u64::from(val == 0))
         }
-        Expression::BitwiseNot(e) => eval_unary_op!(e, |v: u64| !v),
-        Expression::Negate(e) => eval_unary_op!(e, u64::wrapping_neg),
+        Expression::BitwiseNot(e) => {
+            let mut e_kind = ExpressionValueKind::Number;
+            let val = eval!(e, &mut e_kind)?;
+            *value_kind = e_kind;
+            if let ExpressionValueKind::Relative(sec) = e_kind
+                && current_section != Some(sec)
+            {
+                let base = section_layouts.get(sec).mem_offset;
+                Ok(base.wrapping_sub(1).wrapping_sub(val.wrapping_sub(base)))
+            } else {
+                Ok(!val)
+            }
+        }
+        Expression::Negate(e) => {
+            let mut e_kind = ExpressionValueKind::Number;
+            let val = eval!(e, &mut e_kind)?;
+            *value_kind = e_kind;
+            if let ExpressionValueKind::Relative(sec) = e_kind
+                && current_section != Some(sec)
+            {
+                let base = section_layouts.get(sec).mem_offset;
+                Ok(base.wrapping_sub(val.wrapping_sub(base)))
+            } else {
+                Ok(val.wrapping_neg())
+            }
+        }
 
         Expression::Origin(name) => {
             *value_kind = ExpressionValueKind::Address;
