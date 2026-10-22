@@ -28,6 +28,27 @@
 //#LinkArgs:-T ./nested-subtraction.ld
 //#ExpectSym:difference is_abs=true,address=0x20
 
+//#Config:logical-section-start:base
+//#ReferenceLinkers:bfd,lld
+//#LinkArgs:-T ./logical-section-start.ld
+//#ExpectSym:start_and is_abs=true,address=0x1
+//#ExpectSym:start_or is_abs=true,address=0x1
+//#ExpectSym:start_and_zero is_abs=true,address=0x0
+//#ExpectSym:start_or_one is_abs=true,address=0x1
+//#ExpectSym:start_and_expr is_abs=true,address=0x1
+//#ExpectSym:start_or_expr is_abs=true,address=0x1
+//#ExpectSym:start_not_expr is_abs=true,address=0x1
+//#ExpectSym:start_not_expr_false is_abs=true,address=0x0
+
+//#Config:negative-section-offsets:base
+//#LinkArgs:-T ./negative-section-offsets.ld
+//#ExpectSym:before_start section=".text",address=0xffff
+//#ExpectSym:restored_start section=".text",address=0x10000
+//#ExpectSym:minimum section=".text",address=0x10000
+//#ExpectSym:in_sec_and section=".text",address=0x10001
+//#ExpectSym:in_sec_zero_and section=".text",address=0x10000
+//#ExpectSym:in_sec_not section=".text",address=0x10001
+
 //#Config:min-max-location:base
 //#LinkArgs:-T ./min-max-location.ld
 //#ExpectSym:padded_end section=".text",address=0x10100
