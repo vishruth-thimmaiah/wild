@@ -34,6 +34,18 @@
 //#Arch:aarch64
 //#ExpectProgramHeader:LOAD flags=RX,sections=[.text,*],vaddr=0x3f0000
 
+//#Config:nonalloc_first_compressed:nonalloc_first_x86
+//#LinkArgs:--compress-debug-sections=zlib
+
+//#Config:nonalloc_secondary:default
+//#Arch:x86_64
+//#Object:nonalloc-secondary.s
+//#LinkerScript:nonalloc-secondary.ld
+//#ExpectSection:.metadata address=0
+//#ExpectSectionBytes:.metadata=0x0102
+//#ExpectSection:.text address=0x400000
+//#ExpectProgramHeader:LOAD flags=RX,sections=[.text,*],vaddr=0x3ff000
+
 //#Config:page_aligned_aarch64:default
 //#Arch:aarch64
 //#LinkerScript:page-aligned.ld
