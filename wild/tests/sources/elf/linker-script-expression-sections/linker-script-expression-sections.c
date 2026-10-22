@@ -17,6 +17,12 @@
 //#ExpectSym:max_right section=".text",address=0x10010
 //#ExpectSym:max_left section=".text",address=0x10010
 
+//#Config:cross-section-offsets:base
+//#LinkArgs:-T ./cross-section-offsets.ld
+//#ExpectSym:cross_min section=".data",address=0x20000
+//#ExpectSym:cross_mul section=".data",address=0x20000
+//#ExpectSym:cross_neg section=".data",address=0x20000
+
 //#Config:nested-subtraction:base
 //#ReferenceLinkers:bfd,lld
 //#LinkArgs:-T ./nested-subtraction.ld
