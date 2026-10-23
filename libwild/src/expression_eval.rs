@@ -347,34 +347,6 @@ fn min_max_binary_op(
     }
 }
 
-fn logical_binary_op(
-    mut val_l: u64,
-    l_kind: ExpressionValueKind,
-    mut val_r: u64,
-    r_kind: ExpressionValueKind,
-    current_section: Option<OutputSectionId>,
-    section_layouts: &OutputSectionMap<OutputRecordLayout>,
-    op: impl FnOnce(bool, bool) -> bool,
-) -> EvaluatedValue {
-    if current_section.is_none() {
-        if let ExpressionValueKind::Relative(sec) = l_kind {
-            val_l = val_l.wrapping_add(section_layouts.get(sec).mem_offset);
-        }
-        if let ExpressionValueKind::Relative(sec) = r_kind {
-            val_r = val_r.wrapping_add(section_layouts.get(sec).mem_offset);
-        }
-    }
-    let value_kind = if current_section.is_some() {
-        ExpressionValueKind::Number
-    } else {
-        ExpressionValueKind::Absolute
-    };
-    EvaluatedValue {
-        value: u64::from(op(val_l != 0, val_r != 0)),
-        value_kind,
-    }
-}
-
 fn evaluate_location<'data, P: Platform>(
     expr_loc: &SymbolLoc,
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
@@ -687,10 +659,10 @@ fn evaluate_expression_value<'data, P: Platform>(
             })
         }
         Expression::LogicalAnd(l, r) => {
-            eval_binary_op!(l, r, logical_binary_op, |a, b| a && b)
+            eval_binary_op!(l, r, compare_binary_op, |a, b| a != 0 && b != 0)
         }
         Expression::LogicalOr(l, r) => {
-            eval_binary_op!(l, r, logical_binary_op, |a, b| a || b)
+            eval_binary_op!(l, r, compare_binary_op, |a, b| a != 0 || b != 0)
         }
         Expression::LogicalNot(e) => {
             let mut e_kind = ExpressionValueKind::Number;

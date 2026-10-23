@@ -40,6 +40,11 @@
 //#ExpectSym:start_not_expr is_abs=true,address=0x1
 //#ExpectSym:start_not_expr_false is_abs=true,address=0x0
 
+//#Config:logical-mixed-operands:base
+//#LinkArgs:-T ./logical-mixed-operands.ld
+//#ExpectSym:mixed_and section=".text",address=0x10001
+//#ExpectSym:mixed_or section=".text",address=0x10001
+
 //#Config:negative-section-offsets:base
 //#LinkArgs:-T ./negative-section-offsets.ld
 //#ExpectSym:before_start section=".text",address=0xffff
