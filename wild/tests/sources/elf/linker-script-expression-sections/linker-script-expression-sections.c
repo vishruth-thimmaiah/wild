@@ -44,6 +44,9 @@
 //#LinkArgs:-T ./logical-mixed-operands.ld
 //#ExpectSym:mixed_and section=".text",address=0x10001
 //#ExpectSym:mixed_or section=".text",address=0x10001
+//#ExpectSym:mixed_nor section=".text",address=0x10000
+//#ExpectSym:in_sec_nor is_abs=true,address=0x0
+//#ExpectSym:out_sec_nor is_abs=true,address=0x0
 
 //#Config:negative-section-offsets:base
 //#LinkArgs:-T ./negative-section-offsets.ld
@@ -116,6 +119,22 @@
 //#ExpectSym:out_not section=".text",address=0xffff
 //#ExpectSym:out_abs_alias is_abs=true,address=0x20
 //#ExpectSym:out_align_expr is_abs=true,address=0x10100
+
+//#Config:min-max-address:base
+//#LinkArgs:-T ./min-max-address.ld
+//#ExpectSym:min_seg section=".text",address=0x10000
+//#ExpectSym:max_seg section=".text",address=0x10020
+
+//#Config:segment-start-operations:base
+//#LinkArgs:-T ./segment-start-operations.ld
+//#ExpectSym:sym_mul section=".text",address=0x10000
+//#ExpectSym:sym_mul_offset section=".text",address=0x10040
+//#ExpectSym:sym_shl section=".text",address=0x10000
+//#ExpectSym:sym_and section=".text",address=0x10000
+//#ExpectSym:sym_orig_mul section=".text",address=0x10000
+//#ExpectSym:neg_seg section=".text",address=0x10000
+//#ExpectSym:neg_seg_offset section=".text",address=0xffe0
+//#ExpectSym:neg_orig section=".text",address=0x10000
 
 int data_var = 42;
 

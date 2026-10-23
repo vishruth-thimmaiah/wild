@@ -320,6 +320,29 @@ fn min_max_binary_op(
     section_layouts: &OutputSectionMap<OutputRecordLayout>,
     op: impl FnOnce(u64, u64) -> u64,
 ) -> EvaluatedValue {
+    if let Some(curr_sec) = current_section
+        && !l_kind.is_absolute()
+        && !r_kind.is_absolute()
+        && (matches!(l_kind, ExpressionValueKind::Address)
+            || matches!(r_kind, ExpressionValueKind::Address))
+    {
+        let curr_base = section_layouts.get(curr_sec).mem_offset;
+        let to_addr = |val: u64, kind: ExpressionValueKind| match kind {
+            ExpressionValueKind::Relative(sec) => {
+                section_layouts.get(sec).mem_offset.wrapping_add(val)
+            }
+            ExpressionValueKind::Number => curr_base.wrapping_add(val),
+            _ => val,
+        };
+        let addr_l = to_addr(val_l, l_kind);
+        let addr_r = to_addr(val_r, r_kind);
+        let res_addr = op(addr_l, addr_r);
+        return EvaluatedValue {
+            value: res_addr.wrapping_sub(curr_base),
+            value_kind: ExpressionValueKind::Relative(curr_sec),
+        };
+    }
+
     let is_in_section = current_section.is_some();
     let value_kind = if l_kind.section_id().is_some() && l_kind.section_id() == r_kind.section_id()
     {
@@ -672,7 +695,7 @@ fn evaluate_expression_value<'data, P: Platform>(
             {
                 val = val.wrapping_add(section_layouts.get(sec).mem_offset);
             }
-            *value_kind = if current_section.is_some() {
+            *value_kind = if current_section.is_some() && !e_kind.is_absolute() {
                 ExpressionValueKind::Number
             } else {
                 ExpressionValueKind::Absolute
@@ -693,14 +716,20 @@ fn evaluate_expression_value<'data, P: Platform>(
         }
 
         Expression::Origin(name) => {
-            *value_kind = ExpressionValueKind::Address;
             let region = memory_regions.get(name).with_context(|| {
                 format!(
                     "ORIGIN: memory region '{}' not found",
                     String::from_utf8_lossy(name)
                 )
             })?;
-            Ok(region.origin)
+            if let Some(curr_sec) = current_section {
+                let section_base = section_layouts.get(curr_sec).mem_offset;
+                *value_kind = ExpressionValueKind::Relative(curr_sec);
+                Ok(region.origin.wrapping_sub(section_base))
+            } else {
+                *value_kind = ExpressionValueKind::Address;
+                Ok(region.origin)
+            }
         }
         Expression::Length(name) => {
             let region = memory_regions.get(name).with_context(|| {
@@ -715,10 +744,17 @@ fn evaluate_expression_value<'data, P: Platform>(
             let res = if let Some(val) = symbol_db.args.segment_start_override(*name) {
                 val
             } else {
-                eval!(default_expr)?
+                let mut default_kind = ExpressionValueKind::Number;
+                eval!(default_expr, &mut default_kind)?
             };
-            *value_kind = ExpressionValueKind::Address;
-            Ok(res)
+            if let Some(curr_sec) = current_section {
+                let section_base = section_layouts.get(curr_sec).mem_offset;
+                *value_kind = ExpressionValueKind::Relative(curr_sec);
+                Ok(res.wrapping_sub(section_base))
+            } else {
+                *value_kind = ExpressionValueKind::Address;
+                Ok(res)
+            }
         }
         Expression::SizeofHeaders => Ok(sizeof_headers),
         Expression::Ternary(cond, if_true, if_false) => {
