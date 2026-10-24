@@ -1429,6 +1429,7 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
         symbols: &mut crate::parsing::InternalSymbolsBuilder<Elf<C>>,
         output_kind: OutputKind,
         args: &ElfArgs,
+        should_emit_linker_symbols: bool,
     ) {
         // The undefined symbol must always be symbol 0.
         symbols
@@ -1436,15 +1437,55 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             .hide();
 
         symbols
+            .section_start(output_section_id::GOT, "_GLOBAL_OFFSET_TABLE_")
+            .hide();
+
+        if output_kind != OutputKind::StaticExecutable(RelocationModel::Fixed) {
+            symbols
+                .section_start(output_section_id::DYNAMIC, "_DYNAMIC")
+                .hide();
+        }
+
+        if args.architecture() == Architecture::Ppc64 {
+            symbols
+                .section_start(output_section_id::GOT, crate::elf::TOC_SYMBOL_NAME)
+                .hide();
+        }
+
+        if args.architecture() == Architecture::RiscV64 {
+            symbols.section_start(
+                output_section_id::DATA,
+                crate::elf::GLOBAL_POINTER_SYMBOL_NAME,
+            );
+        }
+
+        // We define _TLS_MODULE_BASE_ at the start of the TLS segment for shared objects and at
+        // its aligned end for executables. This symbol is used for TLSDESC.
+        // See https://www.fsfla.org/~lxoliva/writeups/TLS/RFC-TLSDESC-x86.txt for more details.
+        let mut elf_symbol = SymtabEntry::<C>::default();
+        elf_symbol.set_binding_and_type(object::elf::STB_GLOBAL, object::elf::STT_TLS);
+        symbols
+            .add_symbol(InternalSymDefInfo {
+                placement: if output_kind == OutputKind::SharedObject {
+                    SymbolPlacement::SectionStart(output_section_id::TDATA)
+                } else {
+                    SymbolPlacement::TlsEnd(output_section_id::TBSS)
+                },
+                name: b"_TLS_MODULE_BASE_",
+                symbol: elf_symbol,
+            })
+            .hide();
+
+        if !should_emit_linker_symbols {
+            return;
+        }
+
+        symbols
             .section_start(crate::output_section_id::FILE_HEADER, "__ehdr_start")
             .hide();
 
         symbols
             .section_start(crate::output_section_id::FILE_HEADER, "__dso_handle")
-            .hide();
-
-        symbols
-            .section_start(output_section_id::GOT, "_GLOBAL_OFFSET_TABLE_")
             .hide();
 
         // Don't emit .rela.plt start/stop symbols for static PIE executables. Doing so causes glibc
@@ -1504,19 +1545,6 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             .set_hidden(hidden);
         symbols.section_end(output_section_id::BSS, "__end").hide();
 
-        if args.architecture() == Architecture::RiscV64 {
-            symbols.section_start(
-                output_section_id::DATA,
-                crate::elf::GLOBAL_POINTER_SYMBOL_NAME,
-            );
-        }
-
-        if args.architecture() == Architecture::Ppc64 {
-            symbols
-                .section_start(output_section_id::GOT, crate::elf::TOC_SYMBOL_NAME)
-                .hide();
-        }
-
         symbols
             .section_end(output_section_id::DATA, "edata")
             .set_hidden(hidden);
@@ -1528,34 +1556,11 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             .section_start(output_section_id::TDATA, "__tdata_start")
             .hide();
 
-        if output_kind != OutputKind::StaticExecutable(RelocationModel::Fixed) {
-            symbols
-                .section_start(output_section_id::DYNAMIC, "_DYNAMIC")
-                .hide();
-        }
-
         symbols
             .add_symbol(InternalSymDefInfo::new(
                 SymbolPlacement::LoadBaseAddress,
                 b"__executable_start",
             ))
-            .hide();
-
-        // We define _TLS_MODULE_BASE_ at the start of the TLS segment for shared objects and at
-        // its aligned end for executables. This symbol is used for TLSDESC.
-        // See https://www.fsfla.org/~lxoliva/writeups/TLS/RFC-TLSDESC-x86.txt for more details.
-        let mut elf_symbol = SymtabEntry::<C>::default();
-        elf_symbol.set_binding_and_type(object::elf::STB_GLOBAL, object::elf::STT_TLS);
-        symbols
-            .add_symbol(InternalSymDefInfo {
-                placement: if output_kind == OutputKind::SharedObject {
-                    SymbolPlacement::SectionStart(output_section_id::TDATA)
-                } else {
-                    SymbolPlacement::TlsEnd(output_section_id::TBSS)
-                },
-                name: b"_TLS_MODULE_BASE_",
-                symbol: elf_symbol,
-            })
             .hide();
     }
 
