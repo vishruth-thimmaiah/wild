@@ -699,6 +699,9 @@ fn update_internal_symbols_resolutions<'data, P: Platform>(
                 .as_mut()
                 .ok_or_else(|| redirect.missing_resolution(def_info.name))?;
             resolution.raw_value = evaluated.value;
+            if evaluated.is_absolute() {
+                resolution.flags |= ValueFlags::ABSOLUTE;
+            }
         }
     }
 

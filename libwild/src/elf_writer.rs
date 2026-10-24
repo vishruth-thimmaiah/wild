@@ -4688,7 +4688,7 @@ fn write_absolute_relocation<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>
         table_writer
             .write_ifunc_relocation_for_data::<A>(place, resolution.raw_value as i64 + addend)?;
         Ok(0)
-    } else if table_writer.output_kind.is_position_independent() && !resolution.is_absolute() {
+    } else if table_writer.output_kind.is_position_independent() {
         let address = resolution.value_with_addend(
             addend,
             symbol_index,
@@ -4697,7 +4697,26 @@ fn write_absolute_relocation<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>
             &layout.merged_strings,
             &layout.merged_string_start_addresses,
         )?;
-        table_writer.write_address_relocation::<A>(place, address)
+        let local_symbol_id = object_layout.symbol_id_range.input_to_id(symbol_index);
+        let symbol_id = layout.symbol_db.definition(local_symbol_id);
+        if layout.symbol_db.is_linker_script_symbol(symbol_id) && section_info.is_writable {
+            if resolution.is_absolute() {
+                table_writer.write_rela_dyn_general(0, 0, object::elf::RelocationType(0), 0)?;
+                Ok(address)
+            } else {
+                table_writer.write_rela_dyn_general(
+                    place,
+                    0,
+                    A::get_dynamic_relocation_type(DynamicRelocationKind::Relative),
+                    address as i64,
+                )?;
+                Ok(0)
+            }
+        } else if resolution.is_absolute() {
+            Ok(address)
+        } else {
+            table_writer.write_address_relocation::<A>(place, address)
+        }
     } else {
         resolution.value_with_addend(
             addend,

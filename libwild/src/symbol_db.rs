@@ -907,6 +907,11 @@ impl<'data, P: Platform> SymbolDb<'data, P> {
         is_mapping_symbol_name(name.bytes())
     }
 
+    pub(crate) fn is_linker_script_symbol(&self, symbol_id: SymbolId) -> bool {
+        let file_id = self.file_id_for_symbol(symbol_id);
+        matches!(self.file(file_id), SequencedInput::LinkerScript(_))
+    }
+
     pub(crate) fn get_unversioned(
         &self,
         prehashed: &PreHashed<UnversionedSymbolName>,

@@ -7138,7 +7138,9 @@ fn materialize_relocation_requirements<'data, C: ElfClass, A: Arch<Platform = El
         if section_is_writable {
             require_address_sized_relocation()?;
 
-            if resources.symbol_db.args.is_relr_enabled()
+            if resources.symbol_db.is_linker_script_symbol(symbol_id) {
+                common.allocate(part_id::RELA_DYN_GENERAL, C::RELA_ENTRY_SIZE);
+            } else if resources.symbol_db.args.is_relr_enabled()
                 && can_encode_relr_address(classified.rel_offset)
             {
                 relr_writer.encode(classified.rel_offset, |_, encoding| {
