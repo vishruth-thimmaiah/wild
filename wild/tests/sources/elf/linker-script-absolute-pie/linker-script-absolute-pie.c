@@ -2,7 +2,6 @@
 //#Arch:x86_64
 //#ReferenceLinkers:bfd,lld
 //#Object:runtime.c
-//#DiffEnabled:false
 //#ExpectSym:absolute_value is_abs=true,address=0x1234
 //#DiffIgnore:segment.INTERP.alignment
 
