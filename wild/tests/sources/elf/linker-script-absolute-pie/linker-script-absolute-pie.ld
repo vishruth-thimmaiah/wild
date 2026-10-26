@@ -14,6 +14,7 @@ SECTIONS {
     .hash : { *(.hash) } :text
     .gnu.hash : { *(.gnu.hash) } :text
     .rela.dyn : { *(.rela.dyn) } :text
+    .relr.dyn : { *(.relr.dyn) } :text
     .text : {
         *(.text .text.*)
         absolute_value = ABSOLUTE(0x1233) + 1;

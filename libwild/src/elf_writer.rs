@@ -792,6 +792,7 @@ impl<'layout, 'out, C: ElfClass> TableWriter<'layout, 'out, C> {
         layout: Option<&ElfLayout<'data, C>>,
         args: &ElfArgs,
         res: &Resolution<elf::Elf<C>>,
+        is_linker_script_symbol: bool,
     ) -> Result {
         if args.only_keep_debug() {
             return Ok(());
@@ -824,13 +825,18 @@ impl<'layout, 'out, C: ElfClass> TableWriter<'layout, 'out, C> {
             return Ok(());
         }
 
-        let is_got_relr = crate::elf::is_got_relr_eligible(res.flags, args, self.output_kind);
+        let is_got_relr = crate::elf::is_got_relr_eligible(
+            res.flags,
+            args,
+            self.output_kind,
+            is_linker_script_symbol,
+        );
         let got_entry = if is_got_relr {
             self.take_next_got_relr_entry()?
         } else {
             self.take_next_got_entry()?
         };
-        match elf::got_relocation_kind(flags, self.output_kind) {
+        match elf::got_relocation_kind(flags, self.output_kind, is_linker_script_symbol) {
             elf::GotRelocationKind::JumpSlot => {
                 *got_entry = elf::Word::<C>::from_u64(0)?;
                 self.write_jump_slot_relocation::<A>(got_address, res.dynamic_symbol_index()?)?;
@@ -854,6 +860,21 @@ impl<'layout, 'out, C: ElfClass> TableWriter<'layout, 'out, C> {
             elf::GotRelocationKind::Ifunc => {
                 *got_entry = elf::Word::<C>::from_u64(0)?;
                 self.write_ifunc_relocation::<A>(res)?;
+            }
+            elf::GotRelocationKind::LinkerScript => {
+                let value = if res.flags.is_absolute() {
+                    self.write_rela_dyn_general(0, 0, object::elf::RelocationType(0), 0)?;
+                    res.raw_value
+                } else {
+                    self.write_rela_dyn_general(
+                        got_address,
+                        0,
+                        A::get_dynamic_relocation_type(DynamicRelocationKind::Relative),
+                        res.raw_value as i64,
+                    )?;
+                    0
+                };
+                *got_entry = elf::Word::<C>::from_u64(value)?;
             }
             elf::GotRelocationKind::Relative => {
                 let value = if is_got_relr {
@@ -1969,7 +1990,7 @@ fn write_object<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>>(
         let _span = tracing::trace_span!("Symbol", %symbol_id).entered();
         if let Some(res) = resolution {
             table_writer
-                .process_resolution::<A>(Some(layout), layout.args(), res)
+                .process_resolution::<A>(Some(layout), layout.args(), res, false)
                 .with_context(|| {
                     format!(
                         "Failed to process `{}` with resolution {res:?}",
@@ -4924,6 +4945,7 @@ fn write_plt_got_entries<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>>(
                     },
                     flags: ValueFlags::GOT | ValueFlags::ABSOLUTE,
                 },
+                false,
             )?;
 
             raw_value = A::executable_tlsld_offset(layout);
@@ -4944,6 +4966,7 @@ fn write_plt_got_entries<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>>(
                 },
                 flags: ValueFlags::GOT | ValueFlags::ABSOLUTE,
             },
+            false,
         )?;
     }
 
@@ -7025,7 +7048,12 @@ fn write_internal_symbols_plt_got_entries<'data, C: ElfClass, A: Arch<Platform =
         }
         if let Some(res) = layout.local_symbol_resolution(symbol_id) {
             table_writer
-                .process_resolution::<A>(Some(layout), layout.args(), res)
+                .process_resolution::<A>(
+                    Some(layout),
+                    layout.args(),
+                    res,
+                    layout.symbol_db.is_linker_script_symbol(symbol_id),
+                )
                 .with_context(|| {
                     format!("Failed to process `{}`", layout.symbol_debug(symbol_id))
                 })?;
@@ -7114,7 +7142,7 @@ fn write_dynamic_file<'data, C: ElfClass, A: Arch<Platform = elf::Elf<C>>>(
             }
 
             table_writer
-                .process_resolution::<A>(Some(layout), layout.args(), res)
+                .process_resolution::<A>(Some(layout), layout.args(), res, false)
                 .with_context(|| format!("Failed to write {}", layout.symbol_debug(symbol_id)))?;
         }
     }
@@ -7375,7 +7403,7 @@ pub(crate) fn verify_resolution_allocation<C: ElfClass, A: Arch<Platform = elf::
         0,
         args.is_relr_enabled(),
     );
-    table_writer.process_resolution::<A>(None, args, resolution)?;
+    table_writer.process_resolution::<A>(None, args, resolution, false)?;
     table_writer.validate_empty(mem_sizes)
 }
 

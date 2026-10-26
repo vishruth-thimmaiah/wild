@@ -1073,6 +1073,7 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
                 memory_offsets,
                 resources.symbol_db.args,
                 resources.symbol_db.output_kind,
+                false,
             );
 
             resolutions_out.write(Some(resolution))?;
@@ -2098,11 +2099,13 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
         mem_sizes: &mut OutputSectionPartMap<u64>,
         output_kind: OutputKind,
         args: &Self::Args,
+        is_linker_script_symbol: bool,
     ) {
         let has_dynamic_symbol = flags.needs_dynamic_symbol_relocation();
 
         if flags.needs_got() && !flags.needs_tls_got() {
-            let is_got_relr = is_got_relr_eligible(flags, args, output_kind);
+            let is_got_relr =
+                is_got_relr_eligible(flags, args, output_kind, is_linker_script_symbol);
             if is_got_relr {
                 mem_sizes.increment(part_id::GOT_RELR, C::GOT_ENTRY_SIZE);
             } else {
@@ -2111,11 +2114,11 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             if flags.needs_plt() {
                 mem_sizes.increment(part_id::PLT_GOT, PLT_ENTRY_SIZE);
             }
-            match got_relocation_kind(flags, output_kind) {
+            match got_relocation_kind(flags, output_kind, is_linker_script_symbol) {
                 GotRelocationKind::JumpSlot | GotRelocationKind::Ifunc => {
                     mem_sizes.increment(part_id::RELA_PLT, C::RELA_ENTRY_SIZE);
                 }
-                GotRelocationKind::DynamicSymbol => {
+                GotRelocationKind::DynamicSymbol | GotRelocationKind::LinkerScript => {
                     mem_sizes.increment(part_id::RELA_DYN_GENERAL, C::RELA_ENTRY_SIZE);
                 }
                 GotRelocationKind::Relative => {
@@ -2317,6 +2320,7 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
         memory_offsets: &mut OutputSectionPartMap<u64>,
         args: &<Elf<C> as Platform>::Args,
         output_kind: OutputKind,
+        is_linker_script_symbol: bool,
     ) -> Resolution<Elf<C>> {
         let mut resolution: Resolution<Elf<C>> = Resolution {
             raw_value,
@@ -2344,7 +2348,8 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             } else {
                 1
             };
-            let is_got_relr = is_got_relr_eligible(flags, args, output_kind);
+            let is_got_relr =
+                is_got_relr_eligible(flags, args, output_kind, is_linker_script_symbol);
             resolution.format_specific.got_address = if is_got_relr && num_got_entries == 1 {
                 Some(allocate_got_relr::<C>(memory_offsets))
             } else {
@@ -2366,7 +2371,8 @@ impl<C: ElfClass> platform::Platform for Elf<C> {
             resolution.format_specific.got_address =
                 Some(allocate_got::<C>(num_got_slots, memory_offsets));
         } else if flags.needs_got() {
-            let is_got_relr = is_got_relr_eligible(flags, args, output_kind);
+            let is_got_relr =
+                is_got_relr_eligible(flags, args, output_kind, is_linker_script_symbol);
             resolution.format_specific.got_address = if is_got_relr {
                 Some(allocate_got_relr::<C>(memory_offsets))
             } else {
@@ -7252,16 +7258,23 @@ pub(crate) enum GotRelocationKind {
     JumpSlot,
     DynamicSymbol,
     Ifunc,
+    LinkerScript,
     Relative,
 }
 
-pub(crate) fn got_relocation_kind(flags: ValueFlags, output_kind: OutputKind) -> GotRelocationKind {
+pub(crate) fn got_relocation_kind(
+    flags: ValueFlags,
+    output_kind: OutputKind,
+    is_linker_script_symbol: bool,
+) -> GotRelocationKind {
     if flags.needs_canonical_plt() {
         GotRelocationKind::JumpSlot
     } else if flags.needs_dynamic_symbol_relocation() {
         GotRelocationKind::DynamicSymbol
     } else if flags.is_ifunc() {
         GotRelocationKind::Ifunc
+    } else if is_linker_script_symbol && output_kind.is_position_independent() {
+        GotRelocationKind::LinkerScript
     } else if flags.has_link_time_address() && output_kind.is_position_independent() {
         GotRelocationKind::Relative
     } else {
@@ -7291,12 +7304,14 @@ pub(crate) fn is_got_relr_eligible(
     flags: ValueFlags,
     args: &ElfArgs,
     output_kind: OutputKind,
+    is_linker_script_symbol: bool,
 ) -> bool {
     args.is_relr_enabled()
         && !flags.is_ifunc()
         && !flags.needs_dynamic_symbol_relocation()
         && flags.has_link_time_address()
         && !flags.is_downgraded_to_local()
+        && !is_linker_script_symbol
         && output_kind.is_position_independent()
 }
 
