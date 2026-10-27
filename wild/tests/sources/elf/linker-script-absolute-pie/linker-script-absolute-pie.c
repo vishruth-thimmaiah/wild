@@ -13,13 +13,15 @@
 //#LinkArgs:-pie
 //#LinkerScript:linker-script-absolute-pie.ld
 
-//#Config:pie-got:pie
+//#Config:pie-got-relax:pie
 //#CompArgs:-DTEST_GOT
-//#LinkArgs:--no-relax
 //#Arch:x86_64
 //#DiffEnabled:false
 // BFD incorrectly applies the load base to this absolute symbol's GOT entry.
 //#ReferenceLinkers:lld
+
+//#Config:pie-got:pie-got-relax
+//#LinkArgs:--no-relax
 
 //#Config:pie-got-relr:pie-got
 //#LinkArgs:-z pack-relative-relocs

@@ -3893,29 +3893,40 @@ fn apply_relocation<
     let rel_info;
     let output_kind = layout.symbol_db.output_kind;
 
-    let relaxation = A::new_relaxation(
-        r_type,
-        out,
-        offset_in_section,
-        flags,
-        output_kind,
-        section_info.section_flags,
-        relax_deltas,
-        resolution.raw_value,
-        section_address,
-        rel.addend(),
-        relocation_cache
-            .previous
-            .as_ref()
-            .filter(|r| r.symbol() == rel.symbol())
-            .map(|r| PreviousRelocationInfo {
-                kind: r.raw_type(),
-                offset: r.offset(),
-                symbol: r.symbol(),
-                addend: r.addend(),
-            }),
-    )
-    .filter(|relaxation| layout.args().relax || relaxation.is_mandatory());
+    let symbol_id = layout.symbol_db.definition(local_symbol_id);
+    let is_linker_script_symbol = layout.symbol_db.is_linker_script_symbol(symbol_id);
+    let can_relax = !(is_linker_script_symbol
+        && output_kind.is_executable()
+        && output_kind.is_position_independent()
+        && !flags.is_absolute());
+
+    let relaxation = if can_relax {
+        A::new_relaxation(
+            r_type,
+            out,
+            offset_in_section,
+            flags,
+            output_kind,
+            section_info.section_flags,
+            relax_deltas,
+            resolution.raw_value,
+            section_address,
+            rel.addend(),
+            relocation_cache
+                .previous
+                .as_ref()
+                .filter(|r| r.symbol() == rel.symbol())
+                .map(|r| PreviousRelocationInfo {
+                    kind: r.raw_type(),
+                    offset: r.offset(),
+                    symbol: r.symbol(),
+                    addend: r.addend(),
+                }),
+        )
+        .filter(|relaxation| layout.args().relax || relaxation.is_mandatory())
+    } else {
+        None
+    };
 
     if let Some(relaxation) = &relaxation {
         rel_info = relaxation.rel_info();

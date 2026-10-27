@@ -6980,21 +6980,32 @@ fn classify_symbol_relocation<
 
     let mut next_modifier = RelocationModifier::Normal;
     let mut flags_to_add = ValueFlags::empty();
-    let rel_info = if let Some(relaxation) = A::new_relaxation(
-        r_type,
-        object.object.raw_section_data(section)?,
-        rel_offset,
-        flags,
-        symbol_db.output_kind,
-        section_flags,
-        None,
-        1,
-        0,
-        rel.addend(),
-        None,
-    )
-    .filter(|relaxation| args.should_relax() || relaxation.is_mandatory())
-    {
+    let is_linker_script_symbol = resources.symbol_db.is_linker_script_symbol(symbol_id);
+    let can_relax = !(is_linker_script_symbol
+        && symbol_db.output_kind.is_executable()
+        && symbol_db.output_kind.is_position_independent()
+        && !flags.is_absolute());
+
+    let relaxation = if can_relax {
+        A::new_relaxation(
+            r_type,
+            object.object.raw_section_data(section)?,
+            rel_offset,
+            flags,
+            symbol_db.output_kind,
+            section_flags,
+            None,
+            1,
+            0,
+            rel.addend(),
+            None,
+        )
+        .filter(|relaxation| args.should_relax() || relaxation.is_mandatory())
+    } else {
+        None
+    };
+
+    let rel_info = if let Some(relaxation) = relaxation {
         next_modifier = relaxation.next_modifier();
         if relaxation.needs_got_fallback() {
             flags_to_add |= ValueFlags::GOT;
