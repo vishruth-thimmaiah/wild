@@ -1,3 +1,5 @@
+abs_outside = 0x5678;
+
 ENTRY(_start)
 PHDRS {
     headers PT_PHDR PHDRS;

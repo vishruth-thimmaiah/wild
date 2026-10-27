@@ -455,7 +455,7 @@ pub(crate) fn evaluate_expression<'data, P: Platform>(
             if let Some(id) = expr_loc.relative_section_id() {
                 ExpressionValueKind::Relative(output_sections.primary_output_section(id))
             } else {
-                ExpressionValueKind::Number
+                ExpressionValueKind::Absolute
             }
         }
         _ => value_kind,
