@@ -3895,10 +3895,8 @@ fn apply_relocation<
 
     let symbol_id = layout.symbol_db.definition(local_symbol_id);
     let is_linker_script_symbol = layout.symbol_db.is_linker_script_symbol(symbol_id);
-    let can_relax = !(is_linker_script_symbol
-        && output_kind.is_executable()
-        && output_kind.is_position_independent()
-        && !flags.is_absolute());
+    let can_relax =
+        !(is_linker_script_symbol && output_kind.is_position_independent() && !flags.is_absolute());
 
     let relaxation = if can_relax {
         A::new_relaxation(

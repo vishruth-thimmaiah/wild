@@ -6982,7 +6982,6 @@ fn classify_symbol_relocation<
     let mut flags_to_add = ValueFlags::empty();
     let is_linker_script_symbol = resources.symbol_db.is_linker_script_symbol(symbol_id);
     let can_relax = !(is_linker_script_symbol
-        && symbol_db.output_kind.is_executable()
         && symbol_db.output_kind.is_position_independent()
         && !flags.is_absolute());
 
