@@ -9,8 +9,9 @@
 //#ExpectSectionBytes:.data=0x66554433
 
 //#Config:shared:default
+//#ReferenceLinkers:bfd
 //#LinkArgs:-shared
-//#ExpectError:can( |)not be used (when making a shared object|with -shared)
+//#ExpectError:can( |)not be used when making a shared object
 */
 
 .text
