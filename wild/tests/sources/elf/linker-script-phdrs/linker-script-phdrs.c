@@ -87,3 +87,5 @@ int foo(void) { return message2[0] + 42; }
 const char* bar() { return &message[0]; }
 
 __attribute__((used, section(".custom"))) int baz() { return 42; }
+
+int main() { return 0; }
