@@ -1584,7 +1584,6 @@ impl Architecture {
     fn triple_arch(self) -> String {
         match self {
             Architecture::Ppc64 => "powerpc64le".to_owned(),
-            Architecture::RiscV32 => "riscv64".to_owned(),
             _ => self.to_string(),
         }
     }
