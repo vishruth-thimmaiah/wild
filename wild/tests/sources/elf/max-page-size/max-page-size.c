@@ -13,7 +13,7 @@
 //#LinkArgs:-z max-page-size=0x100000 -z now
 //#ExpectLoadAlignment:0x100000
 // It seems that large page sizes are not permitted in RISC-V QEMU
-//#SkipArch: riscv64
+//#SkipArch: riscv64,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 
@@ -21,7 +21,7 @@
 //#LinkArgs:-z max-page-size=0x200000 -z now
 //#ExpectLoadAlignment:0x200000
 // It seems that large page sizes are not permitted in RISC-V QEMU
-//#SkipArch: riscv64
+//#SkipArch: riscv64,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 

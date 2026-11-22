@@ -7,7 +7,7 @@
 //#DiffIgnore:segment.LOAD.RW.alignment
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default
 // linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#ExpectSym:foo address=0x1000000
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie

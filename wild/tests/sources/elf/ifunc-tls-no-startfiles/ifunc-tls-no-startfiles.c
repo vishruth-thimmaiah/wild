@@ -17,13 +17,13 @@
 //#DiffIgnore:section.gnu.version_r
 
 //#Config:riscv:default
-//#Arch:riscv64
+//#Arch:riscv64,riscv32
 // LLD seems to do something wrong here.
 //#ReferenceLinkers:bfd
 //#LinkArgs:-pie
 
 //#Config:other:default
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#LinkArgs:-pie
 
 #include "../common/runtime.h"

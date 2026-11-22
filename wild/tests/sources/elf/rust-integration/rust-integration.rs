@@ -4,6 +4,7 @@
 //#DiffIgnore:debug_info.missing_unit
 // TODO: RISC-V BFD linker keeps multiple .dynsym symbols
 //#DiffIgnore:dynsym.*
+//#SkipArch:riscv32
 
 //#Config:linker-plugin-lto:default
 //#CompArgs:-Clinker-plugin-lto -Clinker=clang -Clink-arg=-flto

@@ -20,7 +20,7 @@
 //#LinkArgs:-no-pie
 
 //#Config:origin:default
-//#LinkArgs:-z origin
+//#LinkArgs:-z origin --enable-new-dtags
 //#ExpectDynamic:DT_FLAGS
 
 //#Config:nodelete:default
@@ -28,7 +28,7 @@
 //#ExpectDynamic:DT_FLAGS_1
 
 //#Config:symbolic:default
-//#LinkArgs:-Bsymbolic
+//#LinkArgs:-Bsymbolic --enable-new-dtags
 // TODO: Set these
 //#DiffIgnore:.dynamic.DT_FLAGS.SYMBOLIC
 //#DiffIgnore:.dynamic.DT_SYMBOLIC

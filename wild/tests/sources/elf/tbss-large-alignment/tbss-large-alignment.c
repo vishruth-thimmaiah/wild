@@ -10,7 +10,7 @@
 
 __thread unsigned char tls_value = 42;
 __thread unsigned char tls_zero[17] __attribute__((aligned(4096)));
-unsigned long normal_data = 0x1122334455667788UL;
+unsigned long long normal_data = 0x1122334455667788ULL;
 
 int main(void) {
   if (ptr_to_int(tls_zero) % 4096 != 0) {
@@ -25,7 +25,7 @@ int main(void) {
   if (tls_zero[16] != 0) {
     return 4;
   }
-  if (normal_data != 0x1122334455667788UL) {
+  if (normal_data != 0x1122334455667788ULL) {
     return 5;
   }
 

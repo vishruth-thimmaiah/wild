@@ -5,6 +5,7 @@
 // TODO: RISC-V BFD linker keeps multiple .dynsym symbols
 //#DiffIgnore:dynsym.*
 //#Shared:rdyn1.rs
+//#SkipArch:riscv32
 
 //#Config:default:default-base
 //#CompArgs:-C debuginfo=2

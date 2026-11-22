@@ -1,7 +1,7 @@
 //#AbstractConfig:default
 //#ReferenceLinkers:bfd
 //#Object:runtime.c
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 

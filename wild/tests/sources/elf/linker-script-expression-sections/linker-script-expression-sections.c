@@ -2,7 +2,7 @@
 //#RunEnabled:false
 //#DiffEnabled:false
 //#ReferenceLinkers:bfd
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 
 //#Config:addr-alias:base
 //#ReferenceLinkers:bfd,lld

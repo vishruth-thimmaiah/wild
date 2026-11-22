@@ -6,7 +6,7 @@
 //#DiffIgnore:segment.INTERP.alignment
 //#DiffIgnore:.dynamic.DT_RELAENT
 //#DiffIgnore:.dynamic.DT_RELA
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 
 //#Config:pie:base
 //#Mode:dynamic

@@ -3,7 +3,7 @@
 //#CompArgs:-fno-pie
 //#LinkArgs:--no-pie
 //#LinkerScript:linker-script-absolute.ld
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#ExpectSym:abs_global is_abs=true,address=0x1000
 //#ExpectSym:abs_global_calc is_abs=true,address=0x1500
 //#ExpectSym:text_start section=".text",address=0x500000

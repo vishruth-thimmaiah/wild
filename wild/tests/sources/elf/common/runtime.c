@@ -59,7 +59,7 @@ void exit_syscall(int exit_code) {
 }
 #endif
 
-#if defined(__powerpc64__)
+#if defined(__powerpc64__) || (defined(__riscv) && (__riscv_xlen == 32))
 // Unlike the other targets, gcc on ppc64le lowers large aggregate initialisers to a call to
 // memcpy even at -O0, and these freestanding tests don't link libc. Provide a minimal
 // implementation. At -O0 gcc doesn't run loop-idiom recognition, so this byte loop is not turned

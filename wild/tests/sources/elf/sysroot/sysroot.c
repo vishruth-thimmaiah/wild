@@ -120,7 +120,7 @@
 // LLD does not expand = in command-line input paths.
 //#ReferenceLinkers:bfd
 //#Symlink:last:root-link
-//#LinkArgs:--sysroot=$OUT_DIR/root-link
+//#LinkArgs:--sysroot=$OUT_DIR/root-link --enable-new-dtags
 //#AugmentLinkerScript:as(last/lib/shared.ld),template(--no-as-needed =/lib/libvalue.so $O -rpath $OUT_DIR/last/lib):script-shared.ld
 
 //#Config:repeated-library-save:repeated-library

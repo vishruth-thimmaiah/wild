@@ -17,7 +17,7 @@
 //#NoProgramHeader:GNU_STACK
 //#NoProgramHeader:GNU_RELRO
 //#NoProgramHeader:GNU_PROPERTY
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 
 //#Config:nophdrs:nophdrs-base
 //#LinkArgs:-shared -z now -T ./linker-script-phdrs.ld --defsym=is_riscv=0 --defsym=is_64_bit=1
@@ -59,7 +59,7 @@
 //#ExpectErrorWild:Missing LOAD PHDR in linker script
 
 //#Config:with-pt-phdr:default
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 // If the linker script intentionally emits overlapping segments, we need to skip the overlap check.
 //#SkipOverlapSegmentsCheck:true
 //#ExpectProgramHeader:PHDR sections=[],offset=0x0,mem-size=0x40
@@ -71,7 +71,7 @@
 //#LinkArgs:-shared -z now -T ./linker-script-phdrs-with-pt-phdr.ld
 
 //#Config:hdr-only-load:default
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#ExpectProgramHeader:LOAD flags=R,sections=[],offset=0x0,mem-size=0x190
 //#LinkArgs:-shared -z now -T ./linker-script-phdrs-hdr-only-load.ld
 

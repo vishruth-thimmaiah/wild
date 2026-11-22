@@ -9,7 +9,7 @@
 //#ExpectSym:empty_1_start address=0x408000
 //#ExpectSym:empty_2_start address=0x418000
 //#NoSection:.empty_7
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 
 //#Config:flags:default
 //#ReferenceLinkers:lld
@@ -19,7 +19,7 @@
 //#ExpectSection:.empty_3 type=1,flags=W
 //#ExpectSym:empty_3_start address=0x0
 //#ExpectSection:.empty_4 type=8,flags=WA
-//#SkipArch:riscv64,x86_64
+//#SkipArch:riscv64,x86_64,riscv32
 
 //#Config:x86:flags
 //#Arch:x86_64

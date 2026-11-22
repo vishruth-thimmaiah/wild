@@ -20,7 +20,7 @@
 
 //#Config:gcc-tls-desc-desc:gcc-tls-desc-base
 //#CompArgs:-mtls-dialect=desc -fPIC
-//#SkipArch: x86_64,riscv64,ppc64le
+//#SkipArch: x86_64,riscv64,ppc64le,riscv32
 //#LinkArgs:-pie
 
 //#Config:gcc-tls-desc-pie:gcc-tls-desc-base
@@ -29,7 +29,7 @@
 
 //#Config:gcc-tls-desc-pie-desc:gcc-tls-desc-base
 //#CompArgs:-mtls-dialect=desc
-//#SkipArch: x86_64,riscv64,ppc64le
+//#SkipArch: x86_64,riscv64,ppc64le,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-pie
 
@@ -53,7 +53,7 @@
 //#Config:gcc-tls-desc-shared-desc:gcc-tls-desc-shared-base
 //#CompArgs:-mtls-dialect=desc
 //#CompSoArgs:-mtls-dialect=desc
-//#SkipArch: x86_64,riscv64,loongarch64,ppc64le
+//#SkipArch: x86_64,riscv64,loongarch64,ppc64le,riscv32
 //#CompArgs:-fPIC
 //#CompSoArgs:-fPIC
 //#LinkArgs:-pie
@@ -70,7 +70,7 @@
 //#Config:clang-tls-desc-desc:clang-tls-desc-base
 //#RequiresCompilerFlags:-mtls-dialect=desc
 //#CompArgs:-mtls-dialect=desc -fPIC
-//#SkipArch: x86_64,riscv64
+//#SkipArch: x86_64,riscv64,riscv32
 //#LinkArgs:-pie
 
 //#AbstractConfig:clang-tls-desc-shared-base:clang-tls-desc-base
@@ -89,7 +89,7 @@
 //#RequiresCompilerFlags:-mtls-dialect=desc
 //#CompArgs:-mtls-dialect=desc -fPIC
 //#CompSoArgs:-mtls-dialect=desc -fPIC
-//#SkipArch: x86_64,riscv64
+//#SkipArch: x86_64,riscv64,riscv32
 // LoongArch GNU ld aligns the empty .eh_frame terminator to 4 instead of 8.
 //#DiffIgnore:section.eh_frame.alignment
 //#LinkArgs:-pie

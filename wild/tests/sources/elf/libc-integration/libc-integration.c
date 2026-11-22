@@ -50,7 +50,7 @@
 //#Object:libc-integration-1.c
 //#ReferenceLinkers:bfd,lld
 // Seems lld linked binary crashes under QEMU.
-//#SkipArch: loongarch64,riscv64,ppc64le
+//#SkipArch: loongarch64,riscv64,ppc64le,riscv32
 //#DiffIgnore:rel.extra-got-plt-got
 //#CompArgs:-fPIE
 
@@ -63,7 +63,7 @@
 //#ReferenceLinkers:bfd,lld
 // riscv64: lld-linked binary crashes with SIGSEGV under QEMU.
 // loongarch64: wild produces output that differs from both ld and lld (#1702).
-//#SkipArch: loongarch64,riscv64,ppc64le
+//#SkipArch: loongarch64,riscv64,ppc64le,riscv32
 //#DiffIgnore:rel.extra-got-plt-got
 
 //#Config:clang-initial-exec:shared
@@ -202,6 +202,8 @@ get_int_fn_t get_sometimes_weak_fn_ptr(void);
 __asm__(".symver some_old_fn_version, timer_gettime@GLIBC_2.2.5");
 #elif defined(__aarch64__)
 __asm__(".symver some_old_fn_version, timer_gettime@GLIBC_2.17");
+#elif defined(__riscv) && (__riscv_xlen == 32)
+__asm__(".symver some_old_fn_version, timer_gettime@GLIBC_2.33");
 #elif defined(__riscv)
 __asm__(".symver some_old_fn_version, timer_gettime@GLIBC_2.27");
 #elif defined(__loongarch__)

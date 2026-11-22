@@ -1658,6 +1658,29 @@ impl Architecture {
             .collect()
     }
 
+    fn gcc_install_dir(self) -> Option<PathBuf> {
+        let triplet = self.cross_triplet();
+        let bases = [
+            format!("/usr/lib64/gcc/{triplet}"),
+            format!("/usr/lib/gcc/{triplet}"),
+            format!("/usr/local/lib/gcc/{triplet}"),
+        ];
+        for base in bases {
+            if let Ok(entries) = std::fs::read_dir(&base) {
+                let mut dirs: Vec<_> = entries
+                    .flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                    .map(|e| e.path())
+                    .collect();
+                dirs.sort();
+                if let Some(last) = dirs.pop() {
+                    return Some(last);
+                }
+            }
+        }
+        None
+    }
+
     fn parse(name: &str) -> Result<Architecture> {
         Self::from_str(name).with_context(|| format!("Unknown arch '{name}'"))
     }
@@ -5008,6 +5031,10 @@ fn add_cross_args(
         // So using real sysroot path breaks linking.
         if !is_host_debian_based() {
             command.arg(format!("--sysroot={}", arch.get_cross_sysroot_path()));
+        }
+
+        if let Some(gcc_dir) = arch.gcc_install_dir() {
+            command.arg(format!("--gcc-install-dir={}", gcc_dir.display()));
         }
     }
 }
@@ -8966,7 +8993,10 @@ where
         }
 
         // Check assertions not related to sections.
-        if let Some(expected_address) = exp.assertions.absolute_address {
+        if let Some(mut expected_address) = exp.assertions.absolute_address {
+            if !obj.is_64() {
+                expected_address &= u64::from(u32::MAX);
+            }
             let actual_address = address;
             if expected_address != actual_address {
                 bail!(
@@ -10511,15 +10541,6 @@ impl PlatformKind {
     }
 
     fn default_architectures(self) -> Vec<Architecture> {
-        if self == PlatformKind::Elf {
-            // TODO: disable running tests on riscv32 by default for now, until sufficient support
-            // for it exists.
-            return ALL_ARCHITECTURES
-                .iter()
-                .copied()
-                .filter(|&arch| arch != Architecture::RiscV32)
-                .collect();
-        }
         self.supported_architectures().to_owned()
     }
 

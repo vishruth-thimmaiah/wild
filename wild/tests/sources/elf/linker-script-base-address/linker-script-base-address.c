@@ -1,7 +1,7 @@
 //#AbstractConfig:default
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#ReferenceLinkers:bfd,lld
 
 //#Config:page_aligned_x86_64:default

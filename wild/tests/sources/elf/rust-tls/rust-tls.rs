@@ -7,6 +7,7 @@
 //#DiffIgnore:dynsym.*
 //#DiffIgnore:.dynamic.DT_FLAGS.TEXTREL
 //#DiffIgnore:.dynamic.DT_TEXTREL
+//#SkipArch:riscv32
 
 //#Config:global-dynamic:default
 //#CompArgs:-Ztls-model=global-dynamic

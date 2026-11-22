@@ -6,7 +6,7 @@
 //#LinkerScript:linker-script-location-counter-3.ld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64,ppc64le
+//#SkipArch:riscv64,ppc64le,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 
@@ -16,7 +16,7 @@
 //#LinkerScript:linker-script-location-counter-phdrs.ld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64,ppc64le
+//#SkipArch:riscv64,ppc64le,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 
@@ -28,7 +28,7 @@
 //#LinkerScript:linker-script-single-location-counter.ld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 
@@ -41,7 +41,7 @@
 //#LinkerScript:linker-script-section-sizeof.ld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
 
@@ -58,7 +58,7 @@
 //#LinkerScript:linker-script-lc-after-section.ld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#DiffIgnore:segment.LOAD.RX.alignment
 //#DiffIgnore:segment.LOAD.RWX.alignment
 //#CompArgs:-fPIE
@@ -71,7 +71,7 @@
 //#LinkArgs:--defsym=offset4=0x300
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#DiffIgnore:segment.LOAD.RX.alignment
 //#DiffIgnore:segment.LOAD.RWX.alignment
 //#CompArgs:-fPIE
@@ -93,7 +93,7 @@
 //#Object:object-symbol-prefix.c
 //#Object:object-symbol-target.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#DiffIgnore:segment.LOAD.RX.alignment
 //#DiffIgnore:segment.LOAD.RWX.alignment
 //#CompArgs:-fPIE
@@ -116,7 +116,7 @@
 //#Object:runtime.c
 //#RunEnabled:false
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#DiffIgnore:segment.LOAD.RX.alignment
 //#DiffIgnore:segment.LOAD.RWX.alignment
 //#CompArgs:-fPIE
@@ -139,7 +139,7 @@
 //#ReferenceLinkers:bfd,lld
 //#Object:runtime.c
 // RISC-V: BFD complains about missing __global_pointer$ (defined in the default linker script)
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 // The binary created is not valid, so we can't run it.
 //#RunEnabled:false
 //#CompArgs:-fPIE

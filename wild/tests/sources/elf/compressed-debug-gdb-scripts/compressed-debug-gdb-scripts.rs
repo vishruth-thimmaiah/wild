@@ -3,6 +3,7 @@
 //#DiffIgnore:section.debug_*
 // Ignore extra .dynsym entries emitted by older GNU ld versions. See #2258
 //#DiffIgnore:dynsym.*
+//#SkipArch:riscv32
 
 //#Config:zlib:default
 //#CompArgs:-g -Clink-arg=-Wl,--compress-debug-sections=zlib

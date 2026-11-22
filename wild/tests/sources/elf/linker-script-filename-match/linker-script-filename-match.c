@@ -3,7 +3,7 @@
 //#Archive:linker-script-filename-match-app.c
 //#Object:runtime.c
 //#DiffIgnore:segment.LOAD.RW.alignment
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#ExpectSym:startup_code section=".text.startup"
 //#ExpectSym:app_code section=".text.app"
 //#ExpectSym:begin_here section=".text"

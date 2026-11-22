@@ -1,5 +1,4 @@
 //#AbstractConfig:default-base
-//#SkipArch: ppc64le
 //#Object:runtime.c
 //#NoProgramHeader:PHDR
 //#NoProgramHeader:INTERP
@@ -8,12 +7,19 @@
 // ld merges the first two LOAD segments with --nmagic, while wild and LLD do not
 //#ReferenceLinkers:lld
 //#RunEnabled:false
-//#ExpectLoadAlignment:0x8 0x20
 
-//#Config:default:default-base
+//#AbstractConfig:default:default-base
 //#LinkArgs:--nmagic -z relro
 //#CompArgs:-fPIE
 //#LinkArgs:-no-pie
+
+//#Config:default-64:default
+//#SkipArch: ppc64le,riscv32
+//#ExpectLoadAlignment:0x8 0x20
+
+//#Config:default-32:default
+//#Arch: riscv32
+//#ExpectLoadAlignment:0x4 0x20
 
 //#Config:warn-max-page-size:default-base
 //#SkipArch: ppc64le

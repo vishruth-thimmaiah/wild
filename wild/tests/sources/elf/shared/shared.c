@@ -18,7 +18,7 @@
 //#CompSoArgs:-fPIE
 
 //#Config:symbolic:common
-//#LinkArgs:-Bsymbolic
+//#LinkArgs:-Bsymbolic --enable-new-dtags
 //#DiffIgnore:.dynamic.DT_FLAGS.SYMBOLIC
 //#DiffIgnore:.dynamic.DT_SYMBOLIC
 //#DiffIgnore:section.got

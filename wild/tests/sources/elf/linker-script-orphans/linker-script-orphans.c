@@ -25,7 +25,7 @@
 //#Config:orphan_data:default
 //#LinkerScript:orphan-data.ld
 //#ReferenceLinkers:bfd
-//#SkipArch:riscv64
+//#SkipArch:riscv64,riscv32
 //#Object:runtime.c
 //#RunEnabled:true
 //#CompArgs:-DTEST_ORPHAN_DATA

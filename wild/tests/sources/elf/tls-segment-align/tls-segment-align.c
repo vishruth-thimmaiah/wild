@@ -52,13 +52,23 @@
 
 #include "../common/ptr_black_box.h"
 
+#if defined(__riscv) && (__riscv_xlen == 32)
+__thread unsigned long tls_var_a = 0x55667788UL;
+#else
 __thread unsigned long tls_var_a = 0x1122334455667788UL;
+#endif
 __thread char tls_var_b[8] __attribute__((aligned(256)));
 
 int main(void) {
+#if defined(__riscv) && (__riscv_xlen == 32)
+  if (tls_var_a != 0x55667788UL) {
+    return 1;
+  }
+#else
   if (tls_var_a != 0x1122334455667788UL) {
     return 1;
   }
+#endif
   if (tls_var_b[0] != 0) {
     return 2;
   }
